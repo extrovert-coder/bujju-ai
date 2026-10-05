@@ -10,6 +10,14 @@ import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
 import multer from 'multer'
 import { PDFParse } from 'pdf-parse'
+import {
+  getUserMemories,
+  saveUserMemory,
+  deleteUserMemory,
+  clearUserMemories,
+  buildMemoryPrompt,
+  extractMemoriesFromConversation,
+} from './memoryManager.js'
 
 // Ensure .env is loaded from project root
 const __filename = fileURLToPath(import.meta.url)
@@ -1016,6 +1024,83 @@ app.delete('/api/conversations/:id', async (req, res) => {
   }
 })
 
+// ----------------------------------------------------
+// CONTINUOUS SELF-TRAINING & ADAPTIVE MEMORY ENDPOINTS
+// ----------------------------------------------------
+
+// GET /api/memories - Fetch all learned memories for the authenticated user
+app.get('/api/memories', async (req, res) => {
+  try {
+    const { user, scopedClient } = await getAuthenticatedUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized. Please sign in.' })
+    }
+    const memories = await getUserMemories(user.id, scopedClient)
+    return res.status(200).json({ success: true, memories })
+  } catch (err) {
+    console.error('[Bujju AI Backend] Get memories error:', err)
+    return res.status(500).json({ error: 'Failed to fetch learned memories.' })
+  }
+})
+
+// POST /api/memories - Manually teach Bujju AI a new memory, rule, or preference
+app.post('/api/memories', async (req, res) => {
+  try {
+    const { user, scopedClient } = await getAuthenticatedUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized. Please sign in.' })
+    }
+    const { fact, category } = req.body || {}
+    if (!fact || typeof fact !== 'string' || !fact.trim()) {
+      return res.status(400).json({ error: 'A non-empty "fact" string is required.' })
+    }
+    const memory = await saveUserMemory(
+      user.id,
+      {
+        fact: fact.trim(),
+        category: category || 'instruction',
+        source: 'manual_teach',
+      },
+      scopedClient,
+    )
+    return res.status(201).json({ success: true, memory })
+  } catch (err) {
+    console.error('[Bujju AI Backend] Save memory error:', err)
+    return res.status(500).json({ error: 'Failed to save learned memory.' })
+  }
+})
+
+// DELETE /api/memories/:id - Forget a specific learned memory
+app.delete('/api/memories/:id', async (req, res) => {
+  try {
+    const { user, scopedClient } = await getAuthenticatedUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized. Please sign in.' })
+    }
+    const { id } = req.params
+    await deleteUserMemory(user.id, id, scopedClient)
+    return res.status(200).json({ success: true, message: 'Memory item forgotten.' })
+  } catch (err) {
+    console.error('[Bujju AI Backend] Delete memory error:', err)
+    return res.status(500).json({ error: 'Failed to delete memory.' })
+  }
+})
+
+// DELETE /api/memories - Clear all learned memories for user
+app.delete('/api/memories', async (req, res) => {
+  try {
+    const { user, scopedClient } = await getAuthenticatedUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized. Please sign in.' })
+    }
+    await clearUserMemories(user.id, scopedClient)
+    return res.status(200).json({ success: true, message: 'All learned memories cleared.' })
+  } catch (err) {
+    console.error('[Bujju AI Backend] Clear memories error:', err)
+    return res.status(500).json({ error: 'Failed to clear learned memories.' })
+  }
+})
+
 // 9. POST /api/chat - Main chat handler with user authentication, file context & Gemini
 app.post('/api/chat', async (req, res) => {
   try {
@@ -1287,6 +1372,16 @@ Web Search is active. Provide current, accurate, and comprehensive information. 
       promptContents = `User question: ${message}`
     }
 
+    // Inject dynamically learned user memories & self-training knowledge
+    try {
+      const memoryPrompt = await buildMemoryPrompt(user.id, scopedClient)
+      if (memoryPrompt) {
+        systemInstruction = `${systemInstruction}\n${memoryPrompt}`
+      }
+    } catch (memPromptErr) {
+      console.warn('[Bujju AI Memory] Memory prompt build notice:', memPromptErr.message)
+    }
+
     // Prepare contents payload with multi-turn history when available
     let contentsPayload
     if (history.length > 1 && !attachedFile) {
@@ -1451,6 +1546,17 @@ Web Search is active. Provide current, accurate, and comprehensive information. 
           localConv.file_name = attachedFile.filename
         }
       }
+
+      // Continuously extract and learn durable facts/preferences from the conversation
+      extractMemoriesFromConversation({
+        userId: user.id,
+        userMessage: message,
+        aiReply: replyText,
+        apiKey,
+        scopedClient,
+      }).catch((learnErr) => {
+        console.warn('[Bujju AI Self-Training] Background extraction error:', learnErr.message)
+      })
     }
 
     // Handle Streaming Response (Server-Sent Events)

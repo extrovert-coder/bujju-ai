@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import AuthPage from './components/AuthPage'
+import MemoryModal from './components/MemoryModal'
 import { supabase } from './lib/supabaseClient'
 import { speakText, stopSpeaking } from './utils/speech'
 import { apiUrl } from './lib/api'
@@ -63,6 +64,11 @@ export default function App() {
   const [voiceRate, setVoiceRate] = useState(1.0)
   const [voiceLang, setVoiceLang] = useState('en-US')
   const [isWebSearch, setIsWebSearch] = useState(false)
+
+  // Continuous Self-Training & User Memory states
+  const [isMemoryOpen, setIsMemoryOpen] = useState(false)
+  const [memories, setMemories] = useState([])
+  const [isMemoryLoading, setIsMemoryLoading] = useState(false)
 
   // Auth Header helper for API requests
   const getAuthHeaders = useCallback(async () => {
@@ -362,6 +368,77 @@ export default function App() {
     }
   }
 
+  // Fetch learned memories from backend
+  const fetchMemories = useCallback(async () => {
+    if (!user) return
+    setIsMemoryLoading(true)
+    try {
+      const headers = await getAuthHeaders()
+      const res = await fetch(apiUrl('/api/memories'), { headers })
+      if (res.ok) {
+        const data = await res.json()
+        setMemories(Array.isArray(data.memories) ? data.memories : [])
+      }
+    } catch (err) {
+      console.warn('[Bujju AI Memory] Failed to fetch memories:', err)
+    } finally {
+      setIsMemoryLoading(false)
+    }
+  }, [user, getAuthHeaders])
+
+  // Initial fetch of memories whenever user logs in or changes
+  useEffect(() => {
+    if (user?.id) {
+      fetchMemories()
+    }
+  }, [user?.id, fetchMemories])
+
+  // Teach Bujju AI a new memory / instruction manually
+  const handleTeachMemory = async (fact, category) => {
+    const headers = await getAuthHeaders()
+    const res = await fetch(apiUrl('/api/memories'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ fact, category }),
+    })
+    if (!res.ok) throw new Error('Failed to teach memory.')
+    const data = await res.json()
+    if (data.memory) {
+      setMemories((prev) => [
+        data.memory,
+        ...prev.filter((m) => m.id !== data.memory.id),
+      ])
+    }
+  }
+
+  // Forget a specific memory
+  const handleDeleteMemory = async (id) => {
+    setMemories((prev) => prev.filter((m) => m.id !== id))
+    try {
+      const headers = await getAuthHeaders()
+      await fetch(apiUrl(`/api/memories/${id}`), {
+        method: 'DELETE',
+        headers,
+      })
+    } catch (err) {
+      console.warn('[Bujju AI Memory] Failed to delete memory on server:', err)
+    }
+  }
+
+  // Clear all learned memories
+  const handleClearMemories = async () => {
+    setMemories([])
+    try {
+      const headers = await getAuthHeaders()
+      await fetch(apiUrl('/api/memories'), {
+        method: 'DELETE',
+        headers,
+      })
+    } catch (err) {
+      console.warn('[Bujju AI Memory] Failed to clear memories on server:', err)
+    }
+  }
+
   // File upload handler
   const handleFileUpload = async (file, directError) => {
     if (directError) {
@@ -654,6 +731,10 @@ export default function App() {
       setMessages((prev) => [...prev, errorReply])
     } finally {
       setIsLoading(false)
+      // Allow background extraction to complete then refresh learned memory badge
+      setTimeout(() => {
+        fetchMemories()
+      }, 2200)
     }
   }
 
@@ -956,6 +1037,11 @@ export default function App() {
         onDeleteChat={handleDeleteChat}
         user={user}
         onLogout={handleLogout}
+        onOpenMemory={() => {
+          setIsMemoryOpen(true)
+          fetchMemories()
+        }}
+        memoriesCount={memories.length}
       />
 
       {/* Main Chat Area */}
@@ -993,6 +1079,22 @@ export default function App() {
         isWebSearch={isWebSearch}
         setIsWebSearch={setIsWebSearch}
         user={user}
+        onOpenMemory={() => {
+          setIsMemoryOpen(true)
+          fetchMemories()
+        }}
+        memoriesCount={memories.length}
+      />
+
+      {/* Continuous Self-Training & Memory Modal */}
+      <MemoryModal
+        isOpen={isMemoryOpen}
+        onClose={() => setIsMemoryOpen(false)}
+        memories={memories}
+        onTeachMemory={handleTeachMemory}
+        onDeleteMemory={handleDeleteMemory}
+        onClearMemories={handleClearMemories}
+        isLoading={isMemoryLoading}
       />
     </div>
   )

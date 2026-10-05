@@ -1,4 +1,4 @@
-import { Plus, MessageSquare, Settings, X, Trash2, LogOut, FileText } from 'lucide-react'
+import { Plus, MessageSquare, Settings, X, Trash2, LogOut, FileText, Brain } from 'lucide-react'
 import BujjuLogo from './BujjuLogo'
 
 export default function Sidebar({
@@ -11,6 +11,8 @@ export default function Sidebar({
   onDeleteChat,
   user,
   onLogout,
+  onOpenMemory,
+  memoriesCount = 0,
 }) {
   const displayName =
     user?.user_metadata?.name ||
@@ -131,7 +133,25 @@ export default function Sidebar({
         </div>
 
         {/* Bottom Section: Settings & User Profile with Logout */}
-        <div className="p-3 border-t border-white/5 space-y-2 bg-[#1e1f20]">
+        <div className="p-3 border-t border-white/5 space-y-1.5 bg-[#1e1f20]">
+          {onOpenMemory && (
+            <button
+              type="button"
+              onClick={onOpenMemory}
+              className="w-full flex items-center justify-between px-3.5 py-2 rounded-full text-xs text-[#c4c7c5] hover:text-white hover:bg-[#282a2c] transition-colors cursor-pointer group"
+            >
+              <div className="flex items-center gap-2.5">
+                <Brain className="h-3.5 w-3.5 text-[#9b72cf] group-hover:scale-110 transition-transform" />
+                <span>AI Memory & Training</span>
+              </div>
+              {memoriesCount > 0 && (
+                <span className="text-[10px] bg-[#9b72cf]/20 text-[#cbb2fe] px-2 py-0.5 rounded-full font-mono font-medium">
+                  {memoriesCount}
+                </span>
+              )}
+            </button>
+          )}
+
           <button
             type="button"
             className="w-full flex items-center gap-2.5 px-3.5 py-2 rounded-full text-xs text-[#c4c7c5] hover:text-white hover:bg-[#282a2c] transition-colors cursor-pointer"

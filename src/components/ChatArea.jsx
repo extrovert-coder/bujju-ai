@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
-import { PanelLeft, Plus, Trash2, Volume2, Square, Zap, ChevronDown } from 'lucide-react'
+import { PanelLeft, Plus, Trash2, Volume2, Square, Zap, ChevronDown, Brain } from 'lucide-react'
 import ChatMessage from './ChatMessage'
 import WelcomeScreen from './WelcomeScreen'
 import ChatInput from './ChatInput'
@@ -108,6 +108,8 @@ export default function ChatArea({
   isWebSearch,
   setIsWebSearch,
   user,
+  onOpenMemory,
+  memoriesCount = 0,
 }) {
   const messagesEndRef = useRef(null)
 
@@ -135,7 +137,7 @@ export default function ChatArea({
           </button>
 
           {/* Gemini Model Status Pill */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1e1f20] hover:bg-[#282a2c] text-xs text-[#e3e3e3] border border-white/5 transition-colors cursor-pointer select-none">
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] hover:bg-[#282a2c] text-xs text-[#e3e3e3] border border-white/5 transition-colors cursor-pointer select-none">
             <BujjuIcon size={20} glow={false} />
             <span className="font-semibold text-white tracking-tight">Bujju AI</span>
             <span className="text-[11px] text-[#8e918f] font-normal">Gemini 3.6 Flash</span>
@@ -161,6 +163,24 @@ export default function ChatArea({
 
         {/* Quick Actions */}
         <div className="flex items-center gap-1.5">
+          {/* Continuous Self-Training Memory Button */}
+          {onOpenMemory && (
+            <button
+              type="button"
+              onClick={onOpenMemory}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-[#e3e3e3] bg-[#1e1f20] hover:bg-[#282a2c] border border-white/5 transition-colors cursor-pointer"
+              title="Bujju AI Continuous Memory & Self-Training"
+            >
+              <Brain className="h-3.5 w-3.5 text-[#9b72cf]" />
+              <span className="hidden sm:inline">Memory</span>
+              {memoriesCount > 0 && (
+                <span className="text-[10px] bg-[#9b72cf]/20 text-[#cbb2fe] px-1.5 py-0.2 rounded-full font-mono font-medium">
+                  {memoriesCount}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Global Stop Speaking button if active */}
           {speakingMessageId && (
             <button

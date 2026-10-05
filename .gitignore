@@ -29,3 +29,8 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Server persistent data
+server/data/*.json
+!server/data/.gitkeep
+
