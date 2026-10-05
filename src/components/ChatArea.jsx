@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
-import { PanelLeft, Sparkles, Plus, Trash2, Volume2, Square, Zap } from 'lucide-react'
+import { PanelLeft, Sparkles, Plus, Trash2, Volume2, Square, Zap, ChevronDown } from 'lucide-react'
 import ChatMessage from './ChatMessage'
 import WelcomeScreen from './WelcomeScreen'
 import ChatInput from './ChatInput'
@@ -22,12 +22,11 @@ function GeminiLoadingIndicator() {
   }, [phases.length])
 
   return (
-    <div className="w-full py-5 px-3 sm:px-6 bg-gradient-to-b from-neutral-900/60 to-neutral-950/40 border-y border-neutral-800/50 backdrop-blur-sm">
-      <div className="max-w-3xl mx-auto flex items-start gap-3.5 sm:gap-4">
+    <div className="w-full py-4 px-3 sm:px-6 bg-transparent animate-fade-in">
+      <div className="max-w-4xl mx-auto flex items-start gap-3.5 sm:gap-4">
         {/* Gemini Aurora Avatar */}
         <div className="relative shrink-0 pt-0.5">
-          <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-emerald-500/30 via-teal-400/30 to-cyan-500/30 blur-sm animate-pulse" />
-          <div className="relative h-8 w-8 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/25 text-white gemini-aurora-glow">
+          <div className="relative h-8 w-8 rounded-full bg-gradient-to-tr from-[#4285f4] via-[#9b72cf] to-[#d96570] flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white">
             <Sparkles className="h-4 w-4" />
           </div>
         </div>
@@ -38,26 +37,26 @@ function GeminiLoadingIndicator() {
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-white tracking-wide">Bujju AI</span>
-              <span className="text-[11px] text-emerald-400 font-medium transition-all duration-300">
+              <span className="text-[11px] text-[#8ab4f8] font-medium transition-all duration-300">
                 {phases[phaseIndex]}
               </span>
             </div>
 
             {/* Equalizer Wave Bars */}
-            <div className="flex items-center gap-1.5 h-4 px-2 py-0.5 rounded-full bg-neutral-800/80 border border-neutral-700/60">
+            <div className="flex items-center gap-1.5 h-4 px-2 py-0.5 rounded-full bg-[#1e1f20] border border-white/5">
               <Zap className="h-2.5 w-2.5 text-amber-400 animate-pulse" />
               <span className="text-[10px] text-neutral-300 font-mono">Flash Engine</span>
               <div className="flex items-center gap-0.5 ml-1">
                 <span
-                  className="w-1 h-2 rounded-full bg-emerald-400"
+                  className="w-1 h-2 rounded-full bg-[#4285f4]"
                   style={{ animation: 'gemini-wave-bar 1s ease-in-out infinite 0ms' }}
                 />
                 <span
-                  className="w-1 h-2.5 rounded-full bg-teal-400"
+                  className="w-1 h-2.5 rounded-full bg-[#9b72cf]"
                   style={{ animation: 'gemini-wave-bar 1s ease-in-out infinite 200ms' }}
                 />
                 <span
-                  className="w-1 h-2 rounded-full bg-cyan-400"
+                  className="w-1 h-2 rounded-full bg-[#d96570]"
                   style={{ animation: 'gemini-wave-bar 1s ease-in-out infinite 400ms' }}
                 />
               </div>
@@ -109,6 +108,7 @@ export default function ChatArea({
   setVoiceLang,
   isWebSearch,
   setIsWebSearch,
+  user,
 }) {
   const messagesEndRef = useRef(null)
 
@@ -121,39 +121,40 @@ export default function ChatArea({
   }, [messages, isLoading])
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-neutral-950 text-neutral-100 overflow-hidden relative">
+    <div className="flex-1 flex flex-col h-full bg-[#131314] text-neutral-100 overflow-hidden relative">
       {/* Top Navbar */}
-      <header className="h-14 shrink-0 flex items-center justify-between px-3 sm:px-6 border-b border-neutral-900 bg-neutral-950/80 backdrop-blur-md z-10">
+      <header className="h-14 shrink-0 flex items-center justify-between px-3 sm:px-6 border-b border-white/5 bg-[#131314]/90 backdrop-blur-md z-10">
         <div className="flex items-center gap-3">
           {/* Mobile Sidebar Toggle */}
           <button
             type="button"
             onClick={onToggleSidebar}
-            className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors md:hidden cursor-pointer"
+            className="p-2 rounded-full text-neutral-400 hover:text-white hover:bg-[#1e1f20] transition-colors md:hidden cursor-pointer"
             aria-label="Toggle sidebar"
           >
             <PanelLeft className="h-5 w-5" />
           </button>
 
-          {/* Model Status Pill */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900 border border-neutral-800 text-xs text-neutral-300">
-            <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
-            <span className="font-semibold text-white">Bujju AI</span>
+          {/* Gemini Model Status Pill */}
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] hover:bg-[#282a2c] text-xs text-[#e3e3e3] border border-white/5 transition-colors cursor-pointer select-none">
+            <span className="font-semibold text-white tracking-tight">Bujju AI</span>
+            <span className="text-[11px] text-[#8e918f] font-normal">Gemini 3.6 Flash</span>
+            <ChevronDown className="h-3 w-3 text-neutral-400" />
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-medium ${
+              className={`text-[9px] px-1.5 py-0.2 rounded-full font-medium ${
                 isLoading
-                  ? 'bg-amber-500/10 text-amber-400 animate-pulse'
-                  : 'bg-emerald-500/10 text-emerald-400'
+                  ? 'bg-amber-500/15 text-amber-400 animate-pulse'
+                  : 'bg-emerald-500/15 text-emerald-400'
               }`}
             >
-              {isLoading ? 'Thinking...' : 'Connected'}
+              {isLoading ? 'Thinking...' : 'Active'}
             </span>
           </div>
 
           {/* Web Search indicator if enabled */}
           {isWebSearch && (
-            <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-medium text-emerald-400">
-              🌐 Web Search On
+            <span className="hidden sm:inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#1e1f20] border border-[#4285f4]/30 text-[11px] font-medium text-[#8ab4f8]">
+              🌐 Web Search
             </span>
           )}
         </div>
@@ -176,11 +177,11 @@ export default function ChatArea({
           <button
             type="button"
             onClick={onNewChat}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-900 border border-transparent hover:border-neutral-800 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-[#e3e3e3] bg-[#1e1f20] hover:bg-[#282a2c] border border-white/5 transition-colors cursor-pointer"
             title="Start new chat"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">New Chat</span>
+            <span className="hidden sm:inline">New chat</span>
           </button>
 
           {messages.length > 0 && (
@@ -188,10 +189,10 @@ export default function ChatArea({
               type="button"
               onClick={onClearChat}
               disabled={isLoading}
-              className={`p-1.5 rounded-lg transition-colors ${
+              className={`p-2 rounded-full transition-colors ${
                 isLoading
                   ? 'text-neutral-600 cursor-not-allowed'
-                  : 'text-neutral-400 hover:text-rose-400 hover:bg-neutral-900 cursor-pointer'
+                  : 'text-neutral-400 hover:text-rose-400 hover:bg-[#1e1f20] cursor-pointer'
               }`}
               title="Clear chat messages"
             >
@@ -206,12 +207,12 @@ export default function ChatArea({
         {isChatLoading ? (
           <div className="flex-1 flex items-center justify-center text-neutral-400">
             <div className="flex flex-col items-center gap-2.5">
-              <div className="h-6 w-6 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+              <div className="h-6 w-6 rounded-full border-2 border-[#4285f4] border-t-transparent animate-spin" />
               <span className="text-xs text-neutral-400">Loading conversation...</span>
             </div>
           </div>
         ) : messages.length === 0 ? (
-          <WelcomeScreen onSelectSuggestion={onSelectSuggestion} />
+          <WelcomeScreen onSelectSuggestion={onSelectSuggestion} user={user} />
         ) : (
           <div className="py-4 space-y-1">
             {messages.map((msg) => (
@@ -236,16 +237,16 @@ export default function ChatArea({
 
       {/* Global Speaking Float Bar */}
       {speakingMessageId && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 rounded-full bg-neutral-900/95 border border-emerald-500/40 text-xs text-white shadow-2xl backdrop-blur-md animate-fade-in">
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 rounded-full bg-[#1e1f20]/95 border border-[#4285f4]/40 text-xs text-white shadow-2xl backdrop-blur-md animate-fade-in">
           <div className="flex items-center gap-2">
-            <Volume2 className="h-4 w-4 text-emerald-400 animate-pulse" />
-            <span className="font-medium text-emerald-400">Bujju AI is reading aloud</span>
+            <Volume2 className="h-4 w-4 text-[#8ab4f8] animate-pulse" />
+            <span className="font-medium text-[#8ab4f8]">Bujju AI is reading aloud</span>
             <span className="text-neutral-400 text-[11px]">({voiceRate}x)</span>
           </div>
           <button
             type="button"
             onClick={onStopSpeaking}
-            className="px-2.5 py-0.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer text-[11px] font-medium"
+            className="px-2.5 py-0.5 rounded-full bg-[#282a2c] hover:bg-[#333538] text-neutral-300 hover:text-white transition-colors cursor-pointer text-[11px] font-medium"
           >
             Stop
           </button>

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import {
   Sparkles,
-  User,
   Copy,
   Check,
   ThumbsUp,
@@ -375,51 +374,76 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
     })
   }
 
+  // User message rendering (Gemini right-aligned rounded bubble)
+  if (!isAi && !isError) {
+    return (
+      <div className="w-full py-2 px-3 sm:px-6 animate-fade-in">
+        <div className="max-w-4xl mx-auto flex justify-end">
+          <div className="max-w-[88%] sm:max-w-[78%] rounded-3xl bg-[#282a2c] text-[#e3e3e3] px-5 py-3.5 shadow-sm text-sm sm:text-base leading-relaxed">
+            <div className="space-y-1.5">
+              {message.text.split('\n').map((line, idx) => {
+                if (line.startsWith('[Image attached: ') && line.endsWith(']')) {
+                  const imgName = line.slice(17, -1)
+                  return (
+                    <div
+                      key={idx}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-neutral-900/80 border border-neutral-700/60 text-xs text-neutral-300 mb-1"
+                    >
+                      <span className="text-sm">🖼️</span>
+                      <span className="font-medium text-white">{imgName}</span>
+                    </div>
+                  )
+                }
+                return (
+                  <p key={idx} className="whitespace-pre-wrap leading-relaxed">
+                    {line}
+                  </p>
+                )
+              })}
+            </div>
+            <div className="text-[10px] text-neutral-400 text-right mt-1 font-mono">
+              {message.timestamp}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // AI message & System Error rendering (Gemini clean left-aligned response)
   return (
-    <div
-      className={`group w-full py-4 px-3 sm:px-6 transition-colors duration-150 ${
-        isError
-          ? 'bg-rose-950/20 border-y border-rose-900/50'
-          : isAi
-          ? 'bg-neutral-900/40 border-y border-neutral-800/40'
-          : 'bg-transparent'
-      }`}
-    >
-      <div className="max-w-3xl mx-auto flex items-start gap-3.5 sm:gap-4">
+    <div className="w-full py-3 px-3 sm:px-6 animate-fade-in">
+      <div className="max-w-4xl mx-auto flex items-start gap-3.5 sm:gap-4">
         {/* Avatar */}
         <div className="shrink-0 pt-0.5">
           {isError ? (
-            <div className="h-8 w-8 rounded-xl bg-rose-600/30 border border-rose-500/50 flex items-center justify-center text-rose-300 shadow-sm">
+            <div className="h-8 w-8 rounded-full bg-rose-950/60 border border-rose-800 flex items-center justify-center text-rose-400 shadow-sm">
               <AlertCircle className="h-4 w-4" />
             </div>
-          ) : isAi ? (
-            <div className="relative h-8 w-8 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-500 flex items-center justify-center shadow-md shadow-emerald-500/20 text-white">
-              <Sparkles className="h-4 w-4 animate-pulse" />
+          ) : (
+            <div className="relative h-8 w-8 rounded-full bg-gradient-to-tr from-[#4285f4] via-[#9b72cf] to-[#d96570] flex items-center justify-center text-white shadow-md">
+              <Sparkles className="h-4 w-4" />
               {isStreaming && (
                 <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 animate-ping" />
               )}
-            </div>
-          ) : (
-            <div className="h-8 w-8 rounded-xl bg-neutral-700 border border-neutral-600 flex items-center justify-center text-neutral-300 shadow-sm">
-              <User className="h-4 w-4" />
             </div>
           )}
         </div>
 
         {/* Message Content */}
         <div className="flex-1 min-w-0 space-y-1">
-          {/* Header (Author + Timestamp) */}
+          {/* Header */}
           <div className="flex items-center gap-2">
             <span
               className={`text-xs font-semibold ${
                 isError ? 'text-rose-400' : 'text-white'
               }`}
             >
-              {isError ? 'System Notice' : isAi ? 'Bujju AI' : 'You'}
+              {isError ? 'System Notice' : 'Bujju AI'}
             </span>
             <span className="text-[11px] text-neutral-500">{message.timestamp}</span>
             {isStreaming && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.2 rounded-full border border-emerald-500/20">
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 streaming
               </span>
@@ -427,17 +451,17 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
           </div>
 
           {/* Body */}
-          <div className="text-sm md:text-base text-neutral-200">
+          <div className="text-sm md:text-base text-[#e3e3e3] leading-relaxed">
             {isError ? (
               <p className="text-rose-300 leading-relaxed">{message.text}</p>
-            ) : isAi ? (
+            ) : (
               <div className="space-y-1">
                 {formatText(message.text)}
                 {isStreaming && (
                   <span className="inline-block w-2 h-4 ml-1 align-middle bg-emerald-400 gemini-cursor-blink rounded-xs shadow-sm shadow-emerald-400/50" />
                 )}
                 {message.sources && message.sources.length > 0 && (
-                  <div className="mt-3 pt-2.5 border-t border-neutral-800/80">
+                  <div className="mt-3.5 pt-3 border-t border-neutral-800">
                     <div className="text-[11px] font-semibold text-neutral-400 mb-1.5 flex items-center gap-1.5">
                       <span>🌐 Sources & Grounding</span>
                     </div>
@@ -448,7 +472,7 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
                           href={src.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-neutral-800/80 hover:bg-neutral-800 text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors border border-neutral-700/60"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1e1f20] hover:bg-[#282a2c] text-[11px] text-sky-400 hover:text-sky-300 transition-colors border border-white/5"
                         >
                           <span className="truncate max-w-[200px]">{src.title || src.url}</span>
                           <ExternalLink className="h-3 w-3 shrink-0" />
@@ -458,53 +482,31 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
                   </div>
                 )}
               </div>
-            ) : (
-              <div className="space-y-1.5">
-                {message.text.split('\n').map((line, idx) => {
-                  if (line.startsWith('[Image attached: ') && line.endsWith(']')) {
-                    const imgName = line.slice(17, -1)
-                    return (
-                      <div
-                        key={idx}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-neutral-800/90 border border-neutral-700/80 text-xs text-neutral-300 mb-1"
-                      >
-                        <span className="text-sm">🖼️</span>
-                        <span className="font-medium text-white">{imgName}</span>
-                      </div>
-                    )
-                  }
-                  return (
-                    <p key={idx} className="whitespace-pre-wrap leading-relaxed text-neutral-200">
-                      {line}
-                    </p>
-                  )
-                })}
-              </div>
             )}
           </div>
 
-          {/* AI Action toolbar (speaker, copy, thumbs up/down, regenerate) */}
+          {/* Gemini AI Action Toolbar */}
           {isAi && !isError && !isStreaming && (
-            <div className="flex items-center gap-1.5 pt-2 text-neutral-400">
+            <div className="flex items-center gap-1 pt-2.5 text-neutral-400">
               {onToggleSpeak && (
                 <button
                   type="button"
                   onClick={() => onToggleSpeak(message)}
-                  className={`p-1.5 rounded-md transition-colors cursor-pointer text-xs flex items-center gap-1 ${
+                  className={`p-1.5 rounded-full hover:bg-[#282a2c] transition-colors cursor-pointer text-xs flex items-center gap-1 ${
                     isSpeaking
-                      ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/30'
-                      : 'hover:bg-neutral-800 hover:text-neutral-200'
+                      ? 'text-emerald-400 bg-emerald-500/10'
+                      : 'hover:text-neutral-200'
                   }`}
                   title={isSpeaking ? 'Stop speaking' : 'Read aloud'}
                   aria-label={isSpeaking ? 'Stop speaking' : 'Read aloud'}
                 >
                   {isSpeaking ? (
                     <>
-                      <VolumeX className="h-3.5 w-3.5 animate-pulse text-emerald-400" />
-                      <span className="text-[11px] font-medium text-emerald-400">Stop speaking</span>
+                      <VolumeX className="h-4 w-4 animate-pulse text-emerald-400" />
+                      <span className="text-[11px] font-medium text-emerald-400">Stop</span>
                     </>
                   ) : (
-                    <Volume2 className="h-3.5 w-3.5" />
+                    <Volume2 className="h-4 w-4" />
                   )}
                 </button>
               )}
@@ -512,53 +514,53 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
               <button
                 type="button"
                 onClick={handleCopy}
-                className="p-1.5 rounded-md hover:bg-neutral-800 hover:text-neutral-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                className="p-1.5 rounded-full hover:bg-[#282a2c] hover:text-neutral-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
                 title="Copy response"
               >
                 {copied ? (
                   <>
-                    <Check className="h-3.5 w-3.5 text-emerald-400" />
+                    <Check className="h-4 w-4 text-emerald-400" />
                     <span className="text-[11px] text-emerald-400">Copied</span>
                   </>
                 ) : (
-                  <Copy className="h-3.5 w-3.5" />
+                  <Copy className="h-4 w-4" />
                 )}
               </button>
 
               <button
                 type="button"
                 onClick={() => setFeedback(feedback === 'like' ? null : 'like')}
-                className={`p-1.5 rounded-md hover:bg-neutral-800 transition-colors cursor-pointer ${
+                className={`p-1.5 rounded-full hover:bg-[#282a2c] transition-colors cursor-pointer ${
                   feedback === 'like'
-                    ? 'text-emerald-400 bg-neutral-800'
+                    ? 'text-emerald-400 bg-[#282a2c]'
                     : 'hover:text-neutral-200'
                 }`}
                 title="Good response"
               >
-                <ThumbsUp className="h-3.5 w-3.5" />
+                <ThumbsUp className="h-4 w-4" />
               </button>
 
               <button
                 type="button"
                 onClick={() => setFeedback(feedback === 'dislike' ? null : 'dislike')}
-                className={`p-1.5 rounded-md hover:bg-neutral-800 transition-colors cursor-pointer ${
+                className={`p-1.5 rounded-full hover:bg-[#282a2c] transition-colors cursor-pointer ${
                   feedback === 'dislike'
-                    ? 'text-rose-400 bg-neutral-800'
+                    ? 'text-rose-400 bg-[#282a2c]'
                     : 'hover:text-neutral-200'
                 }`}
                 title="Bad response"
               >
-                <ThumbsDown className="h-3.5 w-3.5" />
+                <ThumbsDown className="h-4 w-4" />
               </button>
 
               {onRegenerate && (
                 <button
                   type="button"
                   onClick={onRegenerate}
-                  className="p-1.5 rounded-md hover:bg-neutral-800 hover:text-neutral-200 transition-colors cursor-pointer"
+                  className="p-1.5 rounded-full hover:bg-[#282a2c] hover:text-neutral-200 transition-colors cursor-pointer"
                   title="Regenerate response"
                 >
-                  <RotateCcw className="h-3.5 w-3.5" />
+                  <RotateCcw className="h-4 w-4" />
                 </button>
               )}
             </div>
@@ -568,3 +570,4 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
     </div>
   )
 }
+

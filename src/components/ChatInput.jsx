@@ -249,8 +249,8 @@ export default function ChatInput({
   const isSendDisabled = (!input.trim() && !activeImage) || isGenerating || isUploading
 
   return (
-    <div className="w-full bg-gradient-to-t from-neutral-950 via-neutral-950/90 to-transparent pt-3 pb-3 px-3 sm:px-6">
-      <div className="max-w-3xl mx-auto">
+    <div className="w-full bg-gradient-to-t from-[#131314] via-[#131314]/95 to-transparent pt-2 pb-4 px-3 sm:px-6">
+      <div className="max-w-3xl sm:max-w-4xl mx-auto">
         {/* Hidden File Input (PDF only) */}
         <input
           ref={fileInputRef}
@@ -271,7 +271,7 @@ export default function ChatInput({
 
         {/* Voice Error Banner */}
         {voiceError && (
-          <div className="mb-2.5 flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-amber-950/70 border border-amber-800/80 text-xs text-amber-200 shadow-md animate-fade-in">
+          <div className="mb-2.5 flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl bg-amber-950/70 border border-amber-800/80 text-xs text-amber-200 shadow-md animate-fade-in">
             <div className="flex items-center gap-2 min-w-0">
               <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
               <span className="truncate">{voiceError}</span>
@@ -289,21 +289,21 @@ export default function ChatInput({
 
         {/* Listening State Banner */}
         {isListening && (
-          <div className="mb-2.5 flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-neutral-900/95 border border-rose-500/50 text-xs text-rose-200 shadow-lg animate-fade-in">
+          <div className="mb-2.5 flex items-center justify-between gap-2 px-4 py-2 rounded-2xl bg-[#1e1f20] border border-rose-500/50 text-xs text-rose-200 shadow-lg animate-fade-in">
             <div className="flex items-center gap-2.5 min-w-0">
               <span className="relative flex h-3 w-3">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500" />
               </span>
-              <span className="font-semibold text-rose-400">🔴 Listening...</span>
-              <span className="text-[11px] text-neutral-400 hidden sm:inline">
-                Speak now. Speech will be converted to text in the box below.
+              <span className="font-semibold text-rose-400">Listening...</span>
+              <span className="text-[11px] text-[#8e918f] hidden sm:inline">
+                Speak now. Speech will be transcribed into text below.
               </span>
             </div>
             <button
               type="button"
               onClick={stopListening}
-              className="px-2.5 py-1 rounded-lg bg-rose-950 hover:bg-rose-900 text-[11px] font-medium text-rose-200 border border-rose-800/60 cursor-pointer transition-colors"
+              className="px-2.5 py-1 rounded-full bg-rose-950 hover:bg-rose-900 text-[11px] font-medium text-rose-200 border border-rose-800/60 cursor-pointer transition-colors"
             >
               Stop
             </button>
@@ -312,7 +312,7 @@ export default function ChatInput({
 
         {/* Upload Error Banner */}
         {uploadError && (
-          <div className="mb-2.5 flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-rose-950/70 border border-rose-800/80 text-xs text-rose-200 shadow-md animate-fade-in">
+          <div className="mb-2.5 flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl bg-rose-950/70 border border-rose-800/80 text-xs text-rose-200 shadow-md animate-fade-in">
             <div className="flex items-center gap-2 min-w-0">
               <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
               <span className="truncate">{uploadError}</span>
@@ -332,7 +332,7 @@ export default function ChatInput({
 
         {/* Upload Success Banner */}
         {uploadSuccess && (
-          <div className="mb-2.5 flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-emerald-950/60 border border-emerald-800/70 text-xs text-emerald-200 shadow-md animate-fade-in">
+          <div className="mb-2.5 flex items-center justify-between gap-2 px-4 py-2 rounded-2xl bg-[#1e1f20] border border-emerald-500/40 text-xs text-emerald-300 shadow-md animate-fade-in">
             <div className="flex items-center gap-2 min-w-0">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
               <span className="truncate">{uploadSuccess}</span>
@@ -341,7 +341,7 @@ export default function ChatInput({
               <button
                 type="button"
                 onClick={onDismissSuccess}
-                className="p-1 rounded-md text-emerald-400 hover:text-white hover:bg-emerald-900/50 transition-colors shrink-0 cursor-pointer"
+                className="p-1 rounded-md text-emerald-400 hover:text-white hover:bg-neutral-800 transition-colors shrink-0 cursor-pointer"
                 title="Dismiss"
               >
                 <X className="h-3.5 w-3.5" />
@@ -352,7 +352,7 @@ export default function ChatInput({
 
         {/* Upload Progress State */}
         {isUploading && (
-          <div className="mb-2.5 flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-neutral-900/90 border border-emerald-500/30 text-xs text-emerald-300 shadow-md">
+          <div className="mb-2.5 flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-[#1e1f20] border border-emerald-500/30 text-xs text-emerald-300 shadow-md">
             <Loader2 className="h-4 w-4 animate-spin shrink-0 text-emerald-400" />
             <span className="truncate">{uploadProgressText || 'Processing upload...'}</span>
           </div>
@@ -360,13 +360,13 @@ export default function ChatInput({
 
         {/* Active Attached Image Display & Preview */}
         {activeImage && (
-          <div className="mb-2.5 p-2 rounded-xl bg-neutral-900/95 border border-neutral-800 shadow-md">
+          <div className="mb-2.5 p-2.5 rounded-2xl bg-[#1e1f20] border border-neutral-700/50 shadow-md">
             <div className="flex items-center justify-between gap-2 mb-2 px-1">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-base select-none">🖼️</span>
                 <span className="font-medium text-xs text-white truncate">{activeImage.name}</span>
                 {activeImage.size && (
-                  <span className="text-[11px] text-neutral-400 shrink-0">
+                  <span className="text-[11px] text-[#8e918f] shrink-0">
                     ({formatFileSize(activeImage.size)})
                   </span>
                 )}
@@ -374,7 +374,7 @@ export default function ChatInput({
               <button
                 type="button"
                 onClick={onRemoveImage}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-neutral-800 transition-colors shrink-0 cursor-pointer"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-neutral-400 hover:text-rose-400 hover:bg-[#282a2c] transition-colors shrink-0 cursor-pointer"
                 title="Remove attached image"
               >
                 <span className="text-[11px] font-medium hidden sm:inline">Remove</span>
@@ -382,11 +382,11 @@ export default function ChatInput({
               </button>
             </div>
             {activeImage.previewUrl && (
-              <div className="relative max-h-36 sm:max-h-44 w-fit rounded-lg overflow-hidden border border-neutral-800 bg-neutral-950/80">
+              <div className="relative max-h-36 sm:max-h-44 w-fit rounded-xl overflow-hidden border border-neutral-700/50 bg-[#131314]">
                 <img
                   src={activeImage.previewUrl}
                   alt={activeImage.name}
-                  className="max-h-36 sm:max-h-44 max-w-full object-contain rounded-lg"
+                  className="max-h-36 sm:max-h-44 max-w-full object-contain rounded-xl"
                 />
               </div>
             )}
@@ -395,14 +395,14 @@ export default function ChatInput({
 
         {/* Active Attached File Display (PDF) */}
         {activeFile && (
-          <div className="mb-2.5 flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-neutral-900/95 border border-neutral-800 text-xs text-neutral-200 shadow-md">
+          <div className="mb-2.5 flex items-center justify-between gap-2 px-3.5 py-2 rounded-2xl bg-[#1e1f20] border border-neutral-700/50 text-xs text-neutral-200 shadow-md">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="h-6 w-6 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                <FileText className="h-3.5 w-3.5 text-emerald-400" />
+              <div className="h-7 w-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                <FileText className="h-4 w-4 text-emerald-400" />
               </div>
               <span className="font-medium truncate text-white">{activeFile.filename}</span>
               {activeFile.file_size && (
-                <span className="text-[11px] text-neutral-400 shrink-0">
+                <span className="text-[11px] text-[#8e918f] shrink-0">
                   ({formatFileSize(activeFile.file_size)})
                 </span>
               )}
@@ -410,7 +410,7 @@ export default function ChatInput({
             <button
               type="button"
               onClick={onRemoveFile}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-neutral-800 transition-colors shrink-0 cursor-pointer"
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-neutral-400 hover:text-rose-400 hover:bg-[#282a2c] transition-colors shrink-0 cursor-pointer"
               title="Remove attached file"
             >
               <span className="text-[11px] font-medium hidden sm:inline">Remove</span>
@@ -421,13 +421,13 @@ export default function ChatInput({
 
         {/* Active Web Search Indicator Pill */}
         {isWebSearch && (
-          <div className="mb-2 flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-950/50 border border-emerald-800/60 text-xs text-emerald-300 w-fit animate-fade-in">
-            <Globe className="h-3.5 w-3.5 text-emerald-400" />
-            <span className="font-medium">Web Search mode enabled</span>
+          <div className="mb-2 flex items-center gap-2 px-3 py-1 rounded-full bg-[#1e1f20] border border-[#4285f4]/40 text-xs text-[#8ab4f8] w-fit animate-fade-in">
+            <Globe className="h-3.5 w-3.5 text-[#4285f4]" />
+            <span className="font-medium">Web Search mode active</span>
             <button
               type="button"
               onClick={() => setIsWebSearch && setIsWebSearch(false)}
-              className="text-neutral-400 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
+              className="text-neutral-400 hover:text-white p-0.5 rounded-full transition-colors cursor-pointer"
               title="Disable Web Search"
             >
               <X className="h-3 w-3" />
@@ -435,23 +435,23 @@ export default function ChatInput({
           </div>
         )}
 
-        {/* Main Input Box */}
+        {/* Main Gemini Capsule Input Box */}
         <div
-          className={`relative rounded-2xl bg-neutral-900 border transition-all duration-200 shadow-lg ${
+          className={`relative rounded-[28px] sm:rounded-[32px] bg-[#1e1f20] hover:bg-[#212224] focus-within:bg-[#282a2c] border transition-all duration-200 shadow-xl ${
             isListening
-              ? 'border-rose-500/60 ring-2 ring-rose-500/20'
-              : 'border-neutral-800 focus-within:border-neutral-600 focus-within:ring-1 focus-within:ring-emerald-500/50'
+              ? 'border-rose-500/70 ring-2 ring-rose-500/20'
+              : 'border-white/5 focus-within:border-neutral-600/70'
           }`}
         >
-          <div className="flex items-end">
+          <div className="flex items-end px-2 sm:px-3 py-1.5 sm:py-2">
             {/* Attachment & Feature Toolbar */}
-            <div className="flex items-center pl-2 pb-2.5 shrink-0 gap-0.5">
+            <div className="flex items-center shrink-0 gap-0.5 pb-1">
               {/* Paperclip Button (PDF) */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading || isGenerating}
-                className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="p-2 sm:p-2.5 rounded-full text-[#c4c7c5] hover:text-white hover:bg-[#333538] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Attach PDF (Max 10 MB)"
                 aria-label="Attach PDF"
               >
@@ -463,7 +463,7 @@ export default function ChatInput({
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
                 disabled={isUploading || isGenerating}
-                className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="p-2 sm:p-2.5 rounded-full text-[#c4c7c5] hover:text-white hover:bg-[#333538] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Attach Image (.jpg, .jpeg, .png, .webp - Max 10 MB)"
                 aria-label="Attach Image"
               >
@@ -475,10 +475,10 @@ export default function ChatInput({
                 <button
                   type="button"
                   onClick={() => setIsWebSearch(!isWebSearch)}
-                  className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                  className={`p-2 sm:p-2.5 rounded-full transition-colors cursor-pointer ${
                     isWebSearch
-                      ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/30'
-                      : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+                      ? 'text-[#8ab4f8] bg-[#4285f4]/20 border border-[#4285f4]/40'
+                      : 'text-[#c4c7c5] hover:text-white hover:bg-[#333538]'
                   }`}
                   title={isWebSearch ? 'Disable Web Search' : 'Web Search'}
                   aria-label="Web search"
@@ -492,10 +492,10 @@ export default function ChatInput({
                 type="button"
                 onClick={handleMicClick}
                 disabled={isGenerating || isUploading}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
+                className={`p-2 sm:p-2.5 rounded-full transition-all cursor-pointer ${
                   isListening
                     ? 'text-rose-400 bg-rose-500/15 border border-rose-500/40 animate-pulse'
-                    : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+                    : 'text-[#c4c7c5] hover:text-white hover:bg-[#333538]'
                 }`}
                 title={isListening ? 'Stop listening' : 'Voice input'}
                 aria-label={isListening ? 'Stop listening' : 'Voice input'}
@@ -524,45 +524,45 @@ export default function ChatInput({
                   ? 'Ask something about this PDF...'
                   : isWebSearch
                   ? 'Search the web or ask Bujju AI...'
-                  : 'Ask Bujju AI anything...'
+                  : 'Ask Bujju AI...'
               }
-              className="flex-1 bg-transparent px-2.5 py-3.5 pr-2 text-sm sm:text-base text-neutral-100 placeholder-neutral-500 outline-none resize-none max-h-40 leading-relaxed"
+              className="flex-1 bg-transparent px-2.5 py-2 sm:py-2.5 text-[15px] sm:text-base text-[#e3e3e3] placeholder-[#8e918f] outline-none resize-none max-h-40 leading-relaxed"
             />
 
             {/* Send & Settings Controls */}
-            <div className="flex items-center pr-2.5 pb-2.5 shrink-0 gap-1.5">
+            <div className="flex items-center shrink-0 gap-1 pb-1">
               {/* Voice Settings Popover Trigger */}
               <div className="relative">
                 <button
                   type="button"
                   onClick={() => setShowVoiceSettings(!showVoiceSettings)}
-                  className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                  className="p-1.5 sm:p-2 rounded-full text-[#8e918f] hover:text-[#e3e3e3] hover:bg-[#333538] transition-colors cursor-pointer text-xs flex items-center gap-1"
                   title="Voice settings (Speed & Language)"
                   aria-label="Voice settings"
                 >
-                  <Settings2 className="h-3.5 w-3.5" />
+                  <Settings2 className="h-4 w-4" />
                   <span className="text-[11px] font-medium hidden md:inline">{voiceRate}x</span>
                 </button>
 
                 {/* Popover */}
                 {showVoiceSettings && (
-                  <div className="absolute bottom-11 right-0 w-52 p-3 rounded-xl bg-neutral-900 border border-neutral-800 shadow-xl z-30 text-xs text-neutral-200 animate-fade-in space-y-2.5">
-                    <div className="flex items-center justify-between pb-1 border-b border-neutral-800">
-                      <span className="font-semibold text-white text-[11px]">Voice Settings</span>
+                  <div className="absolute bottom-12 right-0 w-56 p-3.5 rounded-2xl bg-[#1e1f20] border border-neutral-700/80 shadow-2xl z-30 text-xs text-neutral-200 animate-fade-in space-y-3">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-neutral-800">
+                      <span className="font-semibold text-white text-xs">Voice Settings</span>
                       <button
                         type="button"
                         onClick={() => setShowVoiceSettings(false)}
-                        className="text-neutral-400 hover:text-white"
+                        className="text-neutral-400 hover:text-white p-0.5 rounded-full hover:bg-neutral-800 cursor-pointer"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
 
                     {/* Speed Selector */}
                     <div>
-                      <div className="text-[11px] text-neutral-400 mb-1 flex items-center justify-between">
+                      <div className="text-[11px] text-[#8e918f] mb-1.5 flex items-center justify-between">
                         <span>Speed</span>
-                        <span className="text-emerald-400 font-mono">{voiceRate}x</span>
+                        <span className="text-[#8ab4f8] font-mono font-medium">{voiceRate}x</span>
                       </div>
                       <div className="flex items-center gap-1">
                         {VOICE_SPEEDS.map((speed) => (
@@ -572,10 +572,10 @@ export default function ChatInput({
                             onClick={() => {
                               if (setVoiceRate) setVoiceRate(speed)
                             }}
-                            className={`flex-1 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                            className={`flex-1 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer ${
                               voiceRate === speed
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                                : 'bg-neutral-800/80 hover:bg-neutral-800 text-neutral-300'
+                                ? 'bg-[#4285f4]/25 text-[#8ab4f8] border border-[#4285f4]/50'
+                                : 'bg-[#282a2c] hover:bg-[#333538] text-neutral-300'
                             }`}
                           >
                             {speed}x
@@ -586,13 +586,13 @@ export default function ChatInput({
 
                     {/* Language Selector */}
                     <div>
-                      <div className="text-[11px] text-neutral-400 mb-1">Language</div>
+                      <div className="text-[11px] text-[#8e918f] mb-1.5">Language</div>
                       <select
                         value={voiceLang}
                         onChange={(e) => {
                           if (setVoiceLang) setVoiceLang(e.target.value)
                         }}
-                        className="w-full bg-neutral-800 border border-neutral-700/80 rounded-md px-2 py-1 text-xs text-neutral-200 outline-none cursor-pointer focus:border-emerald-500"
+                        className="w-full bg-[#282a2c] border border-neutral-700/80 rounded-lg px-2.5 py-1.5 text-xs text-neutral-200 outline-none cursor-pointer focus:border-[#4285f4]"
                       >
                         {SUPPORTED_VOICE_LANGUAGES.map((lang) => (
                           <option key={lang.code} value={lang.code}>
@@ -605,27 +605,28 @@ export default function ChatInput({
                 )}
               </div>
 
-              {/* Send Button */}
+              {/* Gemini Circular Send Button */}
               <button
                 type="button"
                 onClick={onSend}
                 disabled={isSendDisabled}
-                className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl flex items-center justify-center transition-all duration-200 ${
+                className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full flex items-center justify-center transition-all duration-150 ${
                   isSendDisabled
-                    ? 'bg-neutral-800 text-neutral-600 cursor-not-allowed'
-                    : 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-md shadow-emerald-500/25 hover:scale-105 active:scale-95 cursor-pointer'
+                    ? 'bg-[#282a2c] text-[#5e6062] cursor-not-allowed'
+                    : 'bg-white text-black hover:bg-neutral-200 shadow-md hover:scale-105 active:scale-95 cursor-pointer'
                 }`}
                 title="Send message"
                 aria-label="Send message"
               >
-                <ArrowUp className="h-4 w-4 sm:h-5 sm:w-5 stroke-[2.5]" />
+                <ArrowUp className="h-5 w-5 stroke-[2.5]" />
               </button>
             </div>
           </div>
         </div>
 
-        <p className="text-center text-[11px] text-neutral-500 mt-2 tracking-tight">
-          Bujju AI can make mistakes. Verify important information.
+        {/* Gemini Disclaimer */}
+        <p className="text-center text-[11px] text-[#8e918f] mt-2.5 tracking-tight select-none">
+          Bujju AI may display inaccurate info, including about people, so double-check its responses.
         </p>
       </div>
     </div>

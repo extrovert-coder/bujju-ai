@@ -992,6 +992,7 @@ export default function App() {
         setVoiceLang={setVoiceLang}
         isWebSearch={isWebSearch}
         setIsWebSearch={setIsWebSearch}
+        user={user}
       />
     </div>
   )

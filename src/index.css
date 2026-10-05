@@ -27,7 +27,15 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #0a0a0a;
+  background-color: #131314;
+  color: #e3e3e3;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.gemini-gradient-text {
+  background: linear-gradient(74deg, #4285f4 0%, #9b72cf 35%, #d96570 70%, #d96570 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 /* Gemini Shimmer & Glow Animations */
