@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-  Sparkles,
   Copy,
   Check,
   ThumbsUp,
@@ -11,6 +10,7 @@ import {
   VolumeX,
   ExternalLink,
 } from 'lucide-react'
+import { BujjuIcon } from './BujjuLogo'
 
 // Single-pass lexical tokenizer for Gemini-quality code syntax highlighting
 function tokenizeCode(code) {
@@ -421,12 +421,7 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
               <AlertCircle className="h-4 w-4" />
             </div>
           ) : (
-            <div className="relative h-8 w-8 rounded-full bg-gradient-to-tr from-[#4285f4] via-[#9b72cf] to-[#d96570] flex items-center justify-center text-white shadow-md">
-              <Sparkles className="h-4 w-4" />
-              {isStreaming && (
-                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 animate-ping" />
-              )}
-            </div>
+            <BujjuIcon size={30} animated={isStreaming} glow={isStreaming} />
           )}
         </div>
 

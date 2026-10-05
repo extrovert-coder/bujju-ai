@@ -1,4 +1,5 @@
-import { Plus, MessageSquare, Settings, Sparkles, X, Trash2, LogOut, FileText } from 'lucide-react'
+import { Plus, MessageSquare, Settings, X, Trash2, LogOut, FileText } from 'lucide-react'
+import BujjuLogo from './BujjuLogo'
 
 export default function Sidebar({
   isOpen,
@@ -38,19 +39,7 @@ export default function Sidebar({
       >
         {/* Header: Logo and Close (on mobile) */}
         <div className="flex items-center justify-between p-4 border-b border-white/5">
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-[#4285f4] via-[#9b72cf] to-[#d96570] flex items-center justify-center shadow-md text-white shrink-0">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <div>
-              <span className="font-semibold text-base tracking-tight text-white block">
-                Bujju AI
-              </span>
-              <span className="text-[11px] text-[#8ab4f8] font-medium block">
-                Gemini Flash Intelligence
-              </span>
-            </div>
-          </div>
+          <BujjuLogo size="md" subtitle="Gemini Flash Intelligence" animated={true} />
 
           <button
             type="button"

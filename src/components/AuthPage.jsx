@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
-import { Sparkles, Mail, Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { Mail, Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import BujjuLogo from './BujjuLogo'
 
 export default function AuthPage({ onLogin, onSignup, initialMode = 'login' }) {
   const [mode, setMode] = useState(initialMode) // 'login' | 'signup'
@@ -108,21 +109,18 @@ export default function AuthPage({ onLogin, onSignup, initialMode = 'login' }) {
   }
 
   return (
-    <div className="min-h-screen w-screen bg-neutral-950 flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden select-none">
-      {/* Background glow effects */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 left-1/3 -translate-x-1/2 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen w-screen bg-[#131314] flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden select-none">
+      {/* Background Gemini glow effects */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-[#4285f4]/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 left-1/3 -translate-x-1/2 w-80 h-80 bg-[#9b72cf]/15 rounded-full blur-3xl pointer-events-none" />
 
       {/* Main Auth Card */}
-      <div className="w-full max-w-md bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative z-10 transition-all duration-300">
+      <div className="w-full max-w-md bg-[#1e1f20]/95 border border-white/5 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative z-10 transition-all duration-300">
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-8">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/25 mb-4 transform hover:scale-105 transition-transform duration-200">
-            <Sparkles className="h-7 w-7 text-white" />
+          <div className="mb-3">
+            <BujjuLogo size="xl" animated={true} />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-            Bujju AI
-          </h1>
           <p className="text-sm text-neutral-400 mt-1.5">
             {mode === 'login'
               ? 'Sign in to access your saved conversations'

@@ -1,8 +1,9 @@
 import { useRef, useEffect, useState } from 'react'
-import { PanelLeft, Sparkles, Plus, Trash2, Volume2, Square, Zap, ChevronDown } from 'lucide-react'
+import { PanelLeft, Plus, Trash2, Volume2, Square, Zap, ChevronDown } from 'lucide-react'
 import ChatMessage from './ChatMessage'
 import WelcomeScreen from './WelcomeScreen'
 import ChatInput from './ChatInput'
+import { BujjuIcon } from './BujjuLogo'
 
 function GeminiLoadingIndicator() {
   const [phaseIndex, setPhaseIndex] = useState(0)
@@ -24,11 +25,9 @@ function GeminiLoadingIndicator() {
   return (
     <div className="w-full py-4 px-3 sm:px-6 bg-transparent animate-fade-in">
       <div className="max-w-4xl mx-auto flex items-start gap-3.5 sm:gap-4">
-        {/* Gemini Aurora Avatar */}
+        {/* Bujju AI Aurora Avatar */}
         <div className="relative shrink-0 pt-0.5">
-          <div className="relative h-8 w-8 rounded-full bg-gradient-to-tr from-[#4285f4] via-[#9b72cf] to-[#d96570] flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white">
-            <Sparkles className="h-4 w-4" />
-          </div>
+          <BujjuIcon size={30} animated={true} glow={true} />
         </div>
 
         {/* Shimmer & Animated Status */}
@@ -136,7 +135,8 @@ export default function ChatArea({
           </button>
 
           {/* Gemini Model Status Pill */}
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] hover:bg-[#282a2c] text-xs text-[#e3e3e3] border border-white/5 transition-colors cursor-pointer select-none">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1e1f20] hover:bg-[#282a2c] text-xs text-[#e3e3e3] border border-white/5 transition-colors cursor-pointer select-none">
+            <BujjuIcon size={20} glow={false} />
             <span className="font-semibold text-white tracking-tight">Bujju AI</span>
             <span className="text-[11px] text-[#8e918f] font-normal">Gemini 3.6 Flash</span>
             <ChevronDown className="h-3 w-3 text-neutral-400" />
