@@ -13,12 +13,59 @@ import {
   ExternalLink,
 } from 'lucide-react'
 
+function CodeBlock({ language, code }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  return (
+    <div className="my-3 rounded-xl overflow-hidden border border-neutral-800 bg-neutral-950/90 shadow-lg">
+      <div className="flex items-center justify-between px-3.5 py-1.5 bg-neutral-900/90 border-b border-neutral-800/80 text-xs">
+        <span className="font-mono text-neutral-400 font-medium lowercase">
+          {language || 'code'}
+        </span>
+        <button
+          type="button"
+          onClick={handleCopyCode}
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+          title="Copy code"
+        >
+          {copied ? (
+            <>
+              <Check className="h-3 w-3 text-emerald-400" />
+              <span className="text-[11px] text-emerald-400 font-medium">Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" />
+              <span className="text-[11px]">Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="p-3.5 overflow-x-auto text-xs sm:text-sm font-mono text-neutral-200 leading-relaxed selection:bg-emerald-500/30">
+        <code>{code}</code>
+      </pre>
+    </div>
+  )
+}
+
 export default function ChatMessage({ message, onRegenerate, isSpeaking = false, onToggleSpeak }) {
   const [copied, setCopied] = useState(false)
   const [feedback, setFeedback] = useState(null) // 'like' | 'dislike' | null
 
   const isAi = message.sender === 'ai'
   const isError = Boolean(message.isError)
+  const isStreaming = Boolean(message.isStreaming)
 
   const handleCopy = async () => {
     try {
@@ -31,57 +78,158 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
     }
   }
 
-  // Simple formatter for bold, bullet points, headers and blockquotes
-  const formatText = (content) => {
-    const lines = content.split('\n')
-    return lines.map((line, idx) => {
-      if (line.startsWith('### ')) {
-        return (
-          <h4 key={idx} className="text-base font-semibold text-white mt-3 mb-1">
-            {line.replace('### ', '')}
-          </h4>
-        )
-      }
-      if (line.startsWith('* ') || line.startsWith('- ')) {
-        const itemText = line.slice(2)
-        return (
-          <li key={idx} className="ml-4 list-disc text-neutral-300 my-0.5 leading-relaxed">
-            {renderInlineMarkdown(itemText)}
-          </li>
-        )
-      }
-      if (line.startsWith('> ')) {
-        return (
-          <blockquote
-            key={idx}
-            className="border-l-2 border-emerald-500/70 pl-3 my-2 text-sm italic text-neutral-300 bg-neutral-800/40 py-1 rounded-r"
-          >
-            {renderInlineMarkdown(line.replace('> ', ''))}
-          </blockquote>
-        )
-      }
-      if (line.trim() === '') {
-        return <div key={idx} className="h-2" />
-      }
-      return (
-        <p key={idx} className="leading-relaxed text-neutral-200 my-1">
-          {renderInlineMarkdown(line)}
-        </p>
-      )
-    })
-  }
-
+  // Parse inline text with bold, italic, inline code
   const renderInlineMarkdown = (text) => {
-    const parts = text.split(/(\*\*.*?\*\*)/g)
-    return parts.map((part, i) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
+    if (!text) return null
+    // Matches: `code`, **bold**, *italic*
+    const tokens = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g)
+    return tokens.map((token, i) => {
+      if (token.startsWith('`') && token.endsWith('`') && token.length >= 2) {
+        return (
+          <code
+            key={i}
+            className="px-1.5 py-0.5 mx-0.5 rounded-md font-mono text-xs text-emerald-300 bg-neutral-800/90 border border-neutral-700/60"
+          >
+            {token.slice(1, -1)}
+          </code>
+        )
+      }
+      if (token.startsWith('**') && token.endsWith('**') && token.length >= 4) {
         return (
           <strong key={i} className="font-semibold text-white">
-            {part.slice(2, -2)}
+            {token.slice(2, -2)}
           </strong>
         )
       }
-      return part
+      if (token.startsWith('*') && token.endsWith('*') && token.length >= 2) {
+        return (
+          <em key={i} className="italic text-neutral-200">
+            {token.slice(1, -1)}
+          </em>
+        )
+      }
+      return token
+    })
+  }
+
+  // Comprehensive Markdown formatter for Gemini-quality output
+  const formatText = (content) => {
+    if (!content) return null
+
+    // Extract code fences first
+    const codeFenceRegex = /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g
+    const blocks = []
+    let lastIndex = 0
+    let match
+
+    while ((match = codeFenceRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        blocks.push({
+          type: 'text',
+          content: content.slice(lastIndex, match.index),
+        })
+      }
+      blocks.push({
+        type: 'code',
+        language: match[1] || '',
+        code: match[2].trimEnd(),
+      })
+      lastIndex = match.index + match[0].length
+    }
+
+    if (lastIndex < content.length) {
+      blocks.push({
+        type: 'text',
+        content: content.slice(lastIndex),
+      })
+    }
+
+    return blocks.map((block, bIdx) => {
+      if (block.type === 'code') {
+        return <CodeBlock key={`code-${bIdx}`} language={block.language} code={block.code} />
+      }
+
+      const lines = block.content.split('\n')
+      return lines.map((line, idx) => {
+        // Headers
+        if (line.startsWith('# ')) {
+          return (
+            <h2 key={`${bIdx}-${idx}`} className="text-lg sm:text-xl font-bold text-white mt-4 mb-2 tracking-tight">
+              {line.replace(/^#\s+/, '')}
+            </h2>
+          )
+        }
+        if (line.startsWith('## ')) {
+          return (
+            <h3 key={`${bIdx}-${idx}`} className="text-base sm:text-lg font-semibold text-white mt-3 mb-1.5 tracking-tight">
+              {line.replace(/^##\s+/, '')}
+            </h3>
+          )
+        }
+        if (line.startsWith('### ')) {
+          return (
+            <h4 key={`${bIdx}-${idx}`} className="text-sm sm:text-base font-semibold text-emerald-400 mt-2.5 mb-1">
+              {line.replace(/^###\s+/, '')}
+            </h4>
+          )
+        }
+        if (line.startsWith('#### ')) {
+          return (
+            <h5 key={`${bIdx}-${idx}`} className="text-xs sm:text-sm font-semibold text-neutral-300 mt-2 mb-1">
+              {line.replace(/^####\s+/, '')}
+            </h5>
+          )
+        }
+
+        // Numbered list: 1. Item
+        const numberedMatch = line.match(/^(\d+)\.\s+(.*)$/)
+        if (numberedMatch) {
+          return (
+            <div key={`${bIdx}-${idx}`} className="flex items-start gap-2 my-1 pl-1">
+              <span className="text-[11px] font-mono font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0 mt-0.5">
+                {numberedMatch[1]}
+              </span>
+              <div className="text-neutral-200 leading-relaxed text-sm md:text-base">
+                {renderInlineMarkdown(numberedMatch[2])}
+              </div>
+            </div>
+          )
+        }
+
+        // Bullet point: * Item or - Item
+        if (line.startsWith('* ') || line.startsWith('- ')) {
+          const itemText = line.slice(2)
+          return (
+            <li key={`${bIdx}-${idx}`} className="ml-5 list-disc text-neutral-300 my-0.5 leading-relaxed text-sm md:text-base">
+              {renderInlineMarkdown(itemText)}
+            </li>
+          )
+        }
+
+        // Blockquote: > Note
+        if (line.startsWith('> ')) {
+          return (
+            <blockquote
+              key={`${bIdx}-${idx}`}
+              className="border-l-2 border-emerald-500 pl-3.5 my-2.5 text-xs sm:text-sm italic text-neutral-300 bg-emerald-950/20 py-1.5 rounded-r"
+            >
+              {renderInlineMarkdown(line.slice(2))}
+            </blockquote>
+          )
+        }
+
+        // Empty line
+        if (line.trim() === '') {
+          return <div key={`${bIdx}-${idx}`} className="h-2" />
+        }
+
+        // Standard paragraph
+        return (
+          <p key={`${bIdx}-${idx}`} className="leading-relaxed text-neutral-200 my-1 text-sm md:text-base">
+            {renderInlineMarkdown(line)}
+          </p>
+        )
+      })
     })
   }
 
@@ -103,8 +251,11 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
               <AlertCircle className="h-4 w-4" />
             </div>
           ) : isAi ? (
-            <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-md shadow-emerald-500/20 text-white">
-              <Sparkles className="h-4 w-4" />
+            <div className="relative h-8 w-8 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-500 flex items-center justify-center shadow-md shadow-emerald-500/20 text-white">
+              <Sparkles className="h-4 w-4 animate-pulse" />
+              {isStreaming && (
+                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 animate-ping" />
+              )}
             </div>
           ) : (
             <div className="h-8 w-8 rounded-xl bg-neutral-700 border border-neutral-600 flex items-center justify-center text-neutral-300 shadow-sm">
@@ -125,6 +276,12 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
               {isError ? 'System Notice' : isAi ? 'Bujju AI' : 'You'}
             </span>
             <span className="text-[11px] text-neutral-500">{message.timestamp}</span>
+            {isStreaming && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.2 rounded-full border border-emerald-500/20">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                streaming
+              </span>
+            )}
           </div>
 
           {/* Body */}
@@ -134,6 +291,9 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
             ) : isAi ? (
               <div className="space-y-1">
                 {formatText(message.text)}
+                {isStreaming && (
+                  <span className="inline-block w-2 h-4 ml-1 align-middle bg-emerald-400 gemini-cursor-blink rounded-xs shadow-sm shadow-emerald-400/50" />
+                )}
                 {message.sources && message.sources.length > 0 && (
                   <div className="mt-3 pt-2.5 border-t border-neutral-800/80">
                     <div className="text-[11px] font-semibold text-neutral-400 mb-1.5 flex items-center gap-1.5">
@@ -182,7 +342,7 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
           </div>
 
           {/* AI Action toolbar (speaker, copy, thumbs up/down, regenerate) */}
-          {isAi && !isError && (
+          {isAi && !isError && !isStreaming && (
             <div className="flex items-center gap-1.5 pt-2 text-neutral-400">
               {onToggleSpeak && (
                 <button

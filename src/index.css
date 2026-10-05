@@ -29,3 +29,69 @@ body,
   overflow: hidden;
   background-color: #0a0a0a;
 }
+
+/* Gemini Shimmer & Glow Animations */
+@keyframes gemini-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes gemini-aurora {
+  0% {
+    filter: hue-rotate(0deg);
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    filter: hue-rotate(60deg);
+    transform: rotate(180deg) scale(1.08);
+  }
+  100% {
+    filter: hue-rotate(0deg);
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+@keyframes gemini-wave-bar {
+  0%, 100% {
+    transform: scaleY(0.3);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes gemini-cursor {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.1;
+  }
+}
+
+.gemini-shimmer-bar {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(16, 185, 129, 0.22) 35%,
+    rgba(56, 189, 248, 0.25) 50%,
+    rgba(16, 185, 129, 0.22) 65%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  background-size: 250% 100%;
+  animation: gemini-shimmer 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.gemini-aurora-glow {
+  animation: gemini-aurora 6s linear infinite;
+}
+
+.gemini-cursor-blink {
+  animation: gemini-cursor 0.9s ease-in-out infinite;
+}

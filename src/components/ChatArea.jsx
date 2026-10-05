@@ -1,8 +1,80 @@
-import { useRef, useEffect } from 'react'
-import { PanelLeft, Sparkles, Plus, Trash2, Volume2, Square } from 'lucide-react'
+import { useRef, useEffect, useState } from 'react'
+import { PanelLeft, Sparkles, Plus, Trash2, Volume2, Square, Zap } from 'lucide-react'
 import ChatMessage from './ChatMessage'
 import WelcomeScreen from './WelcomeScreen'
 import ChatInput from './ChatInput'
+
+function GeminiLoadingIndicator() {
+  const [phaseIndex, setPhaseIndex] = useState(0)
+
+  const phases = [
+    'Thinking and analyzing context...',
+    'Consulting Gemini intelligence...',
+    'Formulating high-quality response...',
+    'Synthesizing insights...',
+  ]
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPhaseIndex((prev) => (prev + 1) % phases.length)
+    }, 1800)
+    return () => clearInterval(timer)
+  }, [phases.length])
+
+  return (
+    <div className="w-full py-5 px-3 sm:px-6 bg-gradient-to-b from-neutral-900/60 to-neutral-950/40 border-y border-neutral-800/50 backdrop-blur-sm">
+      <div className="max-w-3xl mx-auto flex items-start gap-3.5 sm:gap-4">
+        {/* Gemini Aurora Avatar */}
+        <div className="relative shrink-0 pt-0.5">
+          <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-emerald-500/30 via-teal-400/30 to-cyan-500/30 blur-sm animate-pulse" />
+          <div className="relative h-8 w-8 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/25 text-white gemini-aurora-glow">
+            <Sparkles className="h-4 w-4" />
+          </div>
+        </div>
+
+        {/* Shimmer & Animated Status */}
+        <div className="flex-1 min-w-0 space-y-3 pt-0.5">
+          {/* Header Status */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-white tracking-wide">Bujju AI</span>
+              <span className="text-[11px] text-emerald-400 font-medium transition-all duration-300">
+                {phases[phaseIndex]}
+              </span>
+            </div>
+
+            {/* Equalizer Wave Bars */}
+            <div className="flex items-center gap-1.5 h-4 px-2 py-0.5 rounded-full bg-neutral-800/80 border border-neutral-700/60">
+              <Zap className="h-2.5 w-2.5 text-amber-400 animate-pulse" />
+              <span className="text-[10px] text-neutral-300 font-mono">Flash Engine</span>
+              <div className="flex items-center gap-0.5 ml-1">
+                <span
+                  className="w-1 h-2 rounded-full bg-emerald-400"
+                  style={{ animation: 'gemini-wave-bar 1s ease-in-out infinite 0ms' }}
+                />
+                <span
+                  className="w-1 h-2.5 rounded-full bg-teal-400"
+                  style={{ animation: 'gemini-wave-bar 1s ease-in-out infinite 200ms' }}
+                />
+                <span
+                  className="w-1 h-2 rounded-full bg-cyan-400"
+                  style={{ animation: 'gemini-wave-bar 1s ease-in-out infinite 400ms' }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Shimmering Skeleton Lines */}
+          <div className="space-y-2 py-1">
+            <div className="h-3 sm:h-3.5 w-[88%] rounded-full gemini-shimmer-bar border border-white/5" />
+            <div className="h-3 sm:h-3.5 w-[72%] rounded-full gemini-shimmer-bar border border-white/5" />
+            <div className="h-3 sm:h-3.5 w-[50%] rounded-full gemini-shimmer-bar border border-white/5" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function ChatArea({
   onToggleSidebar,
@@ -152,28 +224,9 @@ export default function ChatArea({
               />
             ))}
 
-            {/* Loading / Typing Indicator */}
-            {isLoading && (
-              <div className="w-full py-4 px-3 sm:px-6 bg-neutral-900/30 border-y border-neutral-800/40">
-                <div className="max-w-3xl mx-auto flex items-start gap-3.5 sm:gap-4">
-                  <div className="shrink-0 pt-0.5">
-                    <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-md shadow-emerald-500/20 text-white animate-pulse">
-                      <Sparkles className="h-4 w-4" />
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-white">Bujju AI</span>
-                      <span className="text-[11px] text-neutral-500">generating response...</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 py-1">
-                      <span className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </div>
-                </div>
-              </div>
+            {/* Gemini Loading / Typing Indicator */}
+            {isLoading && !messages.some((m) => m.isStreaming) && (
+              <GeminiLoadingIndicator />
             )}
 
             <div ref={messagesEndRef} className="h-4" />

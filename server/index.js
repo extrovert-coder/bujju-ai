@@ -91,8 +91,32 @@ const upload = multer({
   },
 })
 
-// Active Gemini model (with automatic fallback on quota exhaustion)
-let activeGeminiModel = (process.env.GEMINI_MODEL || 'gemini-3.8-flash').replace(/^models\//, '')
+// Active Gemini models list with ultra-fast models prioritized and instant failover
+const GEMINI_CANDIDATE_MODELS = [
+  (process.env.GEMINI_MODEL || 'gemini-3.6-flash').replace(/^models\//, ''),
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-3.5-flash',
+].filter((m, i, arr) => m && arr.indexOf(m) === i)
+
+let activeGeminiModel = GEMINI_CANDIDATE_MODELS[0]
+
+// Gemini system instruction to produce the best, Google Gemini-caliber output
+const GEMINI_SYSTEM_INSTRUCTION = `You are Bujju AI, a world-class AI assistant powered by Google Gemini technology.
+Your mission is to provide the best output possible—insightful, clear, brilliantly reasoned, and beautifully formatted like Google Gemini.
+
+Output Formatting & Quality Standards:
+1. Formatting:
+   - Use clean Markdown with headers (## and ###) for distinct sections.
+   - Use bullet points, numbered lists, and bold text for key terms to make answers effortless to scan and read.
+   - When writing code, ALWAYS use markdown code fences with the language identifier (e.g., \`\`\`javascript, \`\`\`python, \`\`\`html, \`\`\`sql). Ensure all code is clean, idiomatic, and production-ready.
+   - Use blockquotes (>) for tips, cautions, or important highlights.
+   - Use Markdown tables when comparing items or displaying structured data.
+2. Tone & Quality:
+   - Provide direct, high-value, and accurate answers.
+   - Be helpful, conversational, insightful, and concise without unhelpful fluff or repetitive disclaimers.
+   - Maintain multi-turn conversational context seamlessly.`
 
 // Supabase Configuration
 const supabaseUrl = process.env.SUPABASE_URL
@@ -676,28 +700,6 @@ Analyze the user's uploaded image and answer their question accurately.
             err.message?.includes('Quota exceeded') ||
             err.message?.toLowerCase().includes('quota')
 
-          const fallbackCandidates = [
-            'gemini-3.8-flash',
-            'gemini-3.6-flash',
-            'gemini-3.5-flash-lite',
-            'gemini-3.5-flash',
-          ]
-          const currentIdx = fallbackCandidates.indexOf(currentModel)
-          const nextModel =
-            currentIdx !== -1 && currentIdx < fallbackCandidates.length - 1
-              ? fallbackCandidates[currentIdx + 1]
-              : null
-
-          if (isQuota && nextModel) {
-            console.log(
-              `[Bujju AI Backend] Vision model ${currentModel} quota exhausted, falling back to ${nextModel}...`,
-            )
-            activeGeminiModel = nextModel
-            currentModel = nextModel
-            attempt--
-            continue
-          }
-
           const isHighDemand =
             err.status === 503 ||
             err.message?.includes('503') ||
@@ -705,12 +707,23 @@ Analyze the user's uploaded image and answer their question accurately.
             err.message?.toLowerCase().includes('high demand') ||
             err.message?.toLowerCase().includes('overloaded')
 
-          if (isHighDemand && attempt < 4) {
-            const delay = attempt * 2500
+          const currentIdx = GEMINI_CANDIDATE_MODELS.indexOf(currentModel)
+          const nextModel =
+            currentIdx !== -1 && currentIdx < GEMINI_CANDIDATE_MODELS.length - 1
+              ? GEMINI_CANDIDATE_MODELS[currentIdx + 1]
+              : (currentIdx !== 0 ? GEMINI_CANDIDATE_MODELS[0] : null)
+
+          if ((isQuota || isHighDemand) && nextModel && nextModel !== currentModel) {
             console.log(
-              `[Bujju AI Backend] Gemini Vision high demand on attempt ${attempt}. Retrying in ${delay}ms...`,
+              `[Bujju AI Backend] Vision model ${currentModel} busy/exhausted, immediately switching to ${nextModel}...`,
             )
-            await new Promise((resolve) => setTimeout(resolve, delay))
+            activeGeminiModel = nextModel
+            currentModel = nextModel
+            continue
+          }
+
+          if (attempt < 2) {
+            await new Promise((resolve) => setTimeout(resolve, 300))
           } else {
             throw err
           }
@@ -1195,16 +1208,57 @@ app.post('/api/chat', async (req, res) => {
       created_at: now,
     })
 
-    // Step 3: Call Google Gemini API (gemini-3.8-flash with fallback to gemini-3.5-flash)
+    // Step 3: Call Google Gemini API with streaming and fast failover
     const ai = new GoogleGenAI({ apiKey })
-    let currentModel = activeGeminiModel
+    const wantsStream = Boolean(req.body?.stream || req.headers.accept?.includes('text/event-stream'))
 
+    // Fetch recent conversation history for multi-turn context
+    let history = []
+    if (scopedClient && conversationId) {
+      try {
+        const { data: pastMsgs } = await scopedClient
+          .from('messages')
+          .select('role, content')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: false })
+          .limit(8)
+        if (pastMsgs && pastMsgs.length > 0) {
+          history = pastMsgs.reverse()
+        }
+      } catch (hErr) {
+        console.warn('[Bujju AI Backend] Could not fetch past messages:', hErr.message)
+      }
+    } else if (conversationId) {
+      const localPast = localStore.messages
+        .filter((m) => m.conversation_id === conversationId && m.id !== userMsgId)
+        .slice(-8)
+      if (localPast.length > 0) {
+        history = localPast.map((m) => ({ role: m.role, content: m.content }))
+      }
+    }
+
+    let systemInstruction = GEMINI_SYSTEM_INSTRUCTION
     let promptContents = message
+
     if (attachedFile) {
-      // Limit text size: if PDF text exceeds safe limit, notify user
       if (attachedFile.extracted_text && attachedFile.extracted_text.length > 50000) {
+        const replyMsg = 'This PDF is too large to process in one request.'
+        if (wantsStream) {
+          res.setHeader('Content-Type', 'text/event-stream')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.setHeader('Connection', 'keep-alive')
+          res.write(`data: ${JSON.stringify({
+            type: 'done',
+            reply: replyMsg,
+            conversation_id: conversationId,
+            title: currentTitle,
+            file_id: attachedFile.id,
+            file_name: attachedFile.filename,
+          })}\n\n`)
+          return res.end()
+        }
         return res.status(200).json({
-          reply: 'This PDF is too large to process in one request.',
+          reply: replyMsg,
           conversation_id: conversationId,
           title: currentTitle,
           file_id: attachedFile.id,
@@ -1212,7 +1266,7 @@ app.post('/api/chat', async (req, res) => {
         })
       }
 
-      promptContents = `You are Bujju AI, a helpful AI assistant.
+      systemInstruction = `You are Bujju AI, a helpful, intelligent AI assistant.
 The user has uploaded a PDF document named "${attachedFile.filename}".
 
 PDF DOCUMENT CONTENT:
@@ -1225,44 +1279,79 @@ INSTRUCTIONS:
 2. If the user asks to summarize the PDF or what the document is about, provide a clear, helpful summary based on the PDF.
 3. If the answer is not found in the PDF, respond strictly with:
 "I couldn't find that information in the uploaded PDF."
-4. Do NOT invent or assume information that is not in the PDF.
-
-User question: ${message}`
+4. Do NOT invent or assume information that is not in the PDF.`
+      promptContents = `User question: ${message}`
     } else if (isWebSearch) {
-      promptContents = `You are Bujju AI, a helpful, intelligent AI assistant with Web Search enabled.
-Answer the user's question with current, accurate, and comprehensive information.
-When presenting facts, current events, or data, cite sources or references clearly.
-
-User question: ${message}`
+      systemInstruction = `${GEMINI_SYSTEM_INSTRUCTION}
+Web Search is active. Provide current, accurate, and comprehensive information. When presenting facts, cite sources or references clearly.`
+      promptContents = `User question: ${message}`
     }
 
-    let response
+    // Prepare contents payload with multi-turn history when available
+    let contentsPayload
+    if (history.length > 1 && !attachedFile) {
+      const turns = []
+      for (const h of history) {
+        if (h.content === message) continue
+        turns.push({
+          role: h.role === 'ai' ? 'model' : 'user',
+          parts: [{ text: h.content }],
+        })
+      }
+      turns.push({
+        role: 'user',
+        parts: [{ text: promptContents }],
+      })
+      contentsPayload = turns
+    } else {
+      contentsPayload = promptContents
+    }
+
+    let currentModel = activeGeminiModel
+    let streamResult = null
+    let responseResult = null
     let useGoogleSearch = isWebSearch
 
     for (let attempt = 1; attempt <= 4; attempt++) {
       try {
         const generateOptions = {
           model: currentModel,
-          contents: promptContents,
-        }
-        if (useGoogleSearch) {
-          generateOptions.config = { tools: [{ googleSearch: {} }] }
+          contents: contentsPayload,
+          config: {
+            systemInstruction,
+          },
         }
 
-        response = await ai.models.generateContent(generateOptions)
+        if (useGoogleSearch) {
+          generateOptions.config.tools = [{ googleSearch: {} }]
+        }
+
+        if (wantsStream) {
+          streamResult = await ai.models.generateContentStream(generateOptions)
+        } else {
+          responseResult = await ai.models.generateContent(generateOptions)
+        }
+        activeGeminiModel = currentModel
         break
       } catch (err) {
         let activeErr = err
 
-        // If Google Search tool specifically ran into quota or an issue, disable search tool
+        // If Google Search tool hit quota or error, immediately fall back without search tool
         if (useGoogleSearch) {
-          console.warn('[Bujju AI Backend] Live search grounding hit quota limit; generating web-informed answer...')
+          console.warn('[Bujju AI Backend] Live search tool hit limit; generating web-informed answer...')
           useGoogleSearch = false
           try {
-            response = await ai.models.generateContent({
+            const generateOptions = {
               model: currentModel,
-              contents: promptContents,
-            })
+              contents: contentsPayload,
+              config: { systemInstruction },
+            }
+            if (wantsStream) {
+              streamResult = await ai.models.generateContentStream(generateOptions)
+            } else {
+              responseResult = await ai.models.generateContent(generateOptions)
+            }
+            activeGeminiModel = currentModel
             break
           } catch (innerErr) {
             activeErr = innerErr
@@ -1275,122 +1364,163 @@ User question: ${message}`
           activeErr.message?.includes('Quota exceeded') ||
           activeErr.message?.toLowerCase().includes('quota')
 
-        const fallbackCandidates = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash']
-        const currentIdx = fallbackCandidates.indexOf(currentModel)
-        const nextModel = currentIdx !== -1 && currentIdx < fallbackCandidates.length - 1 ? fallbackCandidates[currentIdx + 1] : null
+        const isHighDemand =
+          activeErr.status === 503 ||
+          activeErr.message?.includes('503') ||
+          activeErr.message?.includes('UNAVAILABLE') ||
+          activeErr.message?.toLowerCase().includes('high demand') ||
+          activeErr.message?.toLowerCase().includes('overloaded')
 
-        if (isQuota && nextModel) {
+        const currentIdx = GEMINI_CANDIDATE_MODELS.indexOf(currentModel)
+        const nextModel =
+          currentIdx !== -1 && currentIdx < GEMINI_CANDIDATE_MODELS.length - 1
+            ? GEMINI_CANDIDATE_MODELS[currentIdx + 1]
+            : (currentIdx !== 0 ? GEMINI_CANDIDATE_MODELS[0] : null)
+
+        if ((isQuota || isHighDemand) && nextModel && nextModel !== currentModel) {
           console.log(
-            `[Bujju AI Backend] Model ${currentModel} quota exhausted, falling back to ${nextModel}...`,
+            `[Bujju AI Backend] Model ${currentModel} busy or exhausted, immediately switching to ${nextModel}...`,
           )
           activeGeminiModel = nextModel
           currentModel = nextModel
           continue
         }
 
-        const isHighDemand =
-          err.status === 503 ||
-          err.message?.includes('503') ||
-          err.message?.includes('UNAVAILABLE') ||
-          err.message?.toLowerCase().includes('high demand') ||
-          err.message?.toLowerCase().includes('overloaded')
-
-        if (isHighDemand && attempt < 4) {
-          const delay = attempt * 2500
-          console.log(`[Bujju AI Backend] Gemini API high demand on attempt ${attempt}. Retrying in ${delay}ms...`)
-          await new Promise((resolve) => setTimeout(resolve, delay))
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 300))
         } else {
-          throw err
+          throw activeErr
         }
       }
     }
 
-    const replyText = response?.text
+    // Helper to persist AI message to database and local store
+    async function persistAiMessage(replyText, aiMsgId, aiNow) {
+      if (scopedClient) {
+        const { error: aiMsgErr } = await scopedClient.from('messages').insert([
+          {
+            id: aiMsgId,
+            conversation_id: conversationId,
+            role: 'ai',
+            content: replyText,
+            created_at: aiNow,
+          },
+        ])
+        if (aiMsgErr) {
+          console.error('[Bujju AI Backend] Failed to save AI message in Supabase:', aiMsgErr.message)
+        }
 
+        const updateData = {
+          title: currentTitle,
+          updated_at: aiNow,
+        }
+        if (attachedFile) {
+          updateData.file_id = attachedFile.id
+          updateData.file_name = attachedFile.filename
+        }
+
+        const { error: updateErr } = await scopedClient
+          .from('conversations')
+          .update(updateData)
+          .eq('id', conversationId)
+          .eq('user_id', user.id)
+
+        if (updateErr && (updateErr.message?.includes('schema cache') || updateErr.message?.includes('file_id'))) {
+          await scopedClient
+            .from('conversations')
+            .update({ title: currentTitle, updated_at: aiNow })
+            .eq('id', conversationId)
+            .eq('user_id', user.id)
+        }
+      }
+
+      localStore.messages.push({
+        id: aiMsgId,
+        conversation_id: conversationId,
+        role: 'ai',
+        content: replyText,
+        created_at: aiNow,
+      })
+
+      const localConv = localStore.conversations.find((c) => c.id === conversationId)
+      if (localConv) {
+        localConv.title = currentTitle
+        localConv.updated_at = aiNow
+        if (attachedFile) {
+          localConv.file_id = attachedFile.id
+          localConv.file_name = attachedFile.filename
+        }
+      }
+    }
+
+    // Handle Streaming Response (Server-Sent Events)
+    if (wantsStream && streamResult) {
+      res.setHeader('Content-Type', 'text/event-stream')
+      res.setHeader('Cache-Control', 'no-cache, no-transform')
+      res.setHeader('Connection', 'keep-alive')
+      res.flushHeaders?.()
+
+      let replyText = ''
+      let sources = []
+
+      try {
+        for await (const chunk of streamResult) {
+          const chunkText = chunk.text
+          if (chunkText) {
+            replyText += chunkText
+            res.write(`data: ${JSON.stringify({ type: 'chunk', text: chunkText })}\n\n`)
+          }
+          const chunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks
+          if (Array.isArray(chunks)) {
+            for (const c of chunks) {
+              if (c.web?.uri && !sources.some((s) => s.url === c.web.uri)) {
+                sources.push({ title: c.web.title || c.web.uri, url: c.web.uri })
+              }
+            }
+          }
+        }
+
+        const aiNow = new Date().toISOString()
+        const aiMsgId = randomUUID()
+        await persistAiMessage(replyText, aiMsgId, aiNow)
+
+        res.write(`data: ${JSON.stringify({
+          type: 'done',
+          reply: replyText,
+          conversation_id: conversationId,
+          title: currentTitle,
+          file_id: attachedFile?.id || null,
+          file_name: attachedFile?.filename || null,
+          sources: sources.length > 0 ? sources : undefined,
+        })}\n\n`)
+        return res.end()
+      } catch (streamErr) {
+        console.error('[Bujju AI Backend] Streaming error:', streamErr)
+        res.write(`data: ${JSON.stringify({ type: 'error', error: streamErr.message })}\n\n`)
+        return res.end()
+      }
+    }
+
+    // Handle Standard Non-Streaming Response
+    const replyText = responseResult?.text
     if (!replyText) {
       return res.status(500).json({
         error: 'Received an empty response from Gemini model.',
       })
     }
 
-    // Step 4: Save AI response
     const aiNow = new Date().toISOString()
     const aiMsgId = randomUUID()
+    await persistAiMessage(replyText, aiMsgId, aiNow)
 
-    if (scopedClient) {
-      const { error: aiMsgErr } = await scopedClient.from('messages').insert([
-        {
-          id: aiMsgId,
-          conversation_id: conversationId,
-          role: 'ai',
-          content: replyText,
-          created_at: aiNow,
-        },
-      ])
-      if (aiMsgErr) {
-        console.error('[Bujju AI Backend] Failed to save AI message in Supabase:', aiMsgErr.message)
-      }
-
-      const updateData = {
-        title: currentTitle,
-        updated_at: aiNow,
-      }
-      if (attachedFile) {
-        updateData.file_id = attachedFile.id
-        updateData.file_name = attachedFile.filename
-      }
-
-      const { error: updateErr } = await scopedClient
-        .from('conversations')
-        .update(updateData)
-        .eq('id', conversationId)
-        .eq('user_id', user.id)
-
-      if (updateErr && (updateErr.message?.includes('schema cache') || updateErr.message?.includes('file_id'))) {
-        await scopedClient
-          .from('conversations')
-          .update({ title: currentTitle, updated_at: aiNow })
-          .eq('id', conversationId)
-          .eq('user_id', user.id)
-      }
-    }
-
-    localStore.messages.push({
-      id: aiMsgId,
-      conversation_id: conversationId,
-      role: 'ai',
-      content: replyText,
-      created_at: aiNow,
-    })
-
-    const localConv = localStore.conversations.find((c) => c.id === conversationId)
-    if (localConv) {
-      localConv.title = currentTitle
-      localConv.updated_at = aiNow
-      if (attachedFile) {
-        localConv.file_id = attachedFile.id
-        localConv.file_name = attachedFile.filename
-      }
-    }
-
-    // Step 5: Extract grounding sources if web search was used
     let sources = []
-    const chunks = response?.candidates?.[0]?.groundingMetadata?.groundingChunks
+    const chunks = responseResult?.candidates?.[0]?.groundingMetadata?.groundingChunks
     if (Array.isArray(chunks)) {
       sources = chunks
-        .map((c) => {
-          if (c.web?.uri) {
-            return {
-              title: c.web.title || c.web.uri,
-              url: c.web.uri,
-            }
-          }
-          return null
-        })
+        .map((c) => (c.web?.uri ? { title: c.web.title || c.web.uri, url: c.web.uri } : null))
         .filter(Boolean)
     }
 
-    // Step 6: Return response with attached file and sources metadata
     return res.status(200).json({
       reply: replyText,
       conversation_id: conversationId,

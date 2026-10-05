@@ -536,37 +536,64 @@ export default function App() {
           URL.revokeObjectURL(currentImg.previewUrl)
         }
         setActiveImage(null)
+
+        const aiReply = {
+          id: `ai-${Date.now()}`,
+          sender: 'ai',
+          text: data.reply,
+          sources: data.sources || null,
+          timestamp: formatTime(null),
+        }
+        setMessages((prev) => [...prev, aiReply])
       } else {
-        // Normal chat, PDF chat, or Web Search
+        // Normal chat, PDF chat, or Web Search with real-time streaming
         const response = await fetch(apiUrl('/api/chat'), {
           method: 'POST',
-          headers: authHeaders,
+          headers: {
+            ...authHeaders,
+            Accept: 'text/event-stream, application/json',
+          },
           body: JSON.stringify({
             conversation_id: activeChatId,
             file_id: activeFile?.id || null,
             message: trimmedInput,
             webSearch: isWebSearch,
+            stream: true,
           }),
         })
 
-        data = await response.json()
-        if (!response.ok) {
-          throw new Error(data.error || `Server returned error status ${response.status}`)
+        const contentType = response.headers.get('content-type') || ''
+        if (contentType.includes('text/event-stream')) {
+          const tempAiId = `ai-${Date.now()}`
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: tempAiId,
+              sender: 'ai',
+              text: '',
+              isStreaming: true,
+              timestamp: formatTime(null),
+            },
+          ])
+          data = await handleChatStream(response, tempAiId)
+        } else {
+          data = await response.json()
+          if (!response.ok) {
+            throw new Error(data.error || `Server returned error status ${response.status}`)
+          }
+          const aiReply = {
+            id: `ai-${Date.now()}`,
+            sender: 'ai',
+            text: data.reply,
+            sources: data.sources || null,
+            timestamp: formatTime(null),
+          }
+          setMessages((prev) => [...prev, aiReply])
         }
       }
 
-      // Display AI response
-      const aiReply = {
-        id: `ai-${Date.now()}`,
-        sender: 'ai',
-        text: data.reply,
-        sources: data.sources || null,
-        timestamp: formatTime(null),
-      }
-      setMessages((prev) => [...prev, aiReply])
-
       // If backend returned or assigned a conversation ID, keep state synced
-      if (data.conversation_id && data.conversation_id !== activeChatId) {
+      if (data?.conversation_id && data.conversation_id !== activeChatId) {
         setActiveChatId(data.conversation_id)
         if (user?.id) {
           localStorage.setItem(`bujju_active_chat_${user.id}`, data.conversation_id)
@@ -574,7 +601,7 @@ export default function App() {
       }
 
       // Keep active file synced with conversation
-      if (data.file_id && data.file_name && !activeFile) {
+      if (data?.file_id && data?.file_name && !activeFile) {
         setActiveFile({
           id: data.file_id,
           filename: data.file_name,
@@ -582,7 +609,7 @@ export default function App() {
       }
 
       // Update conversation title and file metadata in sidebar
-      if (data.title || data.file_name) {
+      if (data?.title || data?.file_name) {
         setConversations((prev) => {
           const targetId = data.conversation_id || activeChatId
           const exists = prev.some((c) => c.id === targetId)
@@ -630,6 +657,67 @@ export default function App() {
     }
   }
 
+  // Helper to consume Server-Sent Events stream from /api/chat
+  const handleChatStream = async (response, tempAiId) => {
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let accumulatedText = ''
+    let finalMeta = null
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data: ')) continue
+        const jsonStr = trimmed.slice(6)
+        if (!jsonStr) continue
+
+        try {
+          const payload = JSON.parse(jsonStr)
+          if (payload.type === 'chunk' && payload.text) {
+            accumulatedText += payload.text
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempAiId ? { ...m, text: accumulatedText, isStreaming: true } : m,
+              ),
+            )
+          } else if (payload.type === 'done') {
+            finalMeta = payload
+            accumulatedText = payload.reply || accumulatedText
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempAiId
+                  ? {
+                      ...m,
+                      text: accumulatedText,
+                      sources: payload.sources || null,
+                      isStreaming: false,
+                    }
+                  : m,
+              ),
+            )
+          } else if (payload.type === 'error') {
+            throw new Error(payload.error || 'Streaming error occurred.')
+          }
+        } catch (parseErr) {
+          if (parseErr.message?.includes('Streaming error')) throw parseErr
+        }
+      }
+    }
+
+    setMessages((prev) =>
+      prev.map((m) => (m.id === tempAiId ? { ...m, isStreaming: false } : m)),
+    )
+    return finalMeta || { reply: accumulatedText }
+  }
+
   // Clear messages in current view
   const handleClearChat = () => {
     handleStopSpeaking()
@@ -648,27 +736,45 @@ export default function App() {
       const headers = await getAuthHeaders()
       const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
-        headers,
+        headers: {
+          ...headers,
+          Accept: 'text/event-stream, application/json',
+        },
         body: JSON.stringify({
           conversation_id: activeChatId,
           file_id: activeFile?.id || null,
           message: lastUserMessage.text,
+          stream: true,
         }),
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || `Server returned error status ${response.status}`)
+      const contentType = response.headers.get('content-type') || ''
+      if (contentType.includes('text/event-stream')) {
+        const tempAiId = `ai-${Date.now()}`
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: tempAiId,
+            sender: 'ai',
+            text: '',
+            isStreaming: true,
+            timestamp: formatTime(null),
+          },
+        ])
+        await handleChatStream(response, tempAiId)
+      } else {
+        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data.error || `Server returned error status ${response.status}`)
+        }
+        const aiReply = {
+          id: `ai-${Date.now()}`,
+          sender: 'ai',
+          text: data.reply,
+          timestamp: formatTime(null),
+        }
+        setMessages((prev) => [...prev, aiReply])
       }
-
-      const aiReply = {
-        id: `ai-${Date.now()}`,
-        sender: 'ai',
-        text: data.reply,
-        timestamp: formatTime(null),
-      }
-      setMessages((prev) => [...prev, aiReply])
     } catch (err) {
       console.error('Error regenerating chat response:', err)
       const errorReply = {
