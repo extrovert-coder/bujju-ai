@@ -13,7 +13,68 @@ import {
   ExternalLink,
 } from 'lucide-react'
 
-function CodeBlock({ language, code }) {
+// Syntax highlighter that mirrors Google Gemini's rich code formatting
+function highlightSyntax(rawCode, language = '') {
+  if (!rawCode) return ''
+
+  const escapeHtml = (str) =>
+    str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+
+  const lang = (language || '').toLowerCase().trim()
+  const lines = rawCode.split('\n')
+
+  return lines
+    .map((line) => {
+      let esc = escapeHtml(line)
+      const trimmed = esc.trim()
+
+      // Full-line comments
+      if (
+        trimmed.startsWith('//') ||
+        trimmed.startsWith('/*') ||
+        (trimmed.startsWith('#') && !esc.includes('&lt;') && lang !== 'c' && lang !== 'cpp')
+      ) {
+        return `<span class="text-neutral-500 italic">${esc}</span>`
+      }
+
+      // C/C++ Preprocessor Directives (#include, #define, etc.)
+      if (esc.includes('#include') || esc.includes('#define') || esc.includes('#ifndef') || esc.includes('#endif')) {
+        esc = esc.replace(
+          /(#(?:include|define|ifndef|ifdef|endif|pragma))\s*(&lt;.*?&gt;|&quot;.*?&quot;|[a-zA-Z0-9_]+)?/g,
+          '<span class="text-pink-400 font-semibold">$1</span> <span class="text-emerald-300 font-medium">$2</span>'
+        )
+      }
+
+      // String literals: "...", '...', `...`
+      esc = esc.replace(
+        /(&quot;.*?&quot;|&#39;.*?&#39;|`.*?`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g,
+        '<span class="text-emerald-300">$1</span>'
+      )
+
+      // Function calls: name(...)
+      esc = esc.replace(
+        /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(?=\()/g,
+        '<span class="text-sky-300 font-medium">$1</span>'
+      )
+
+      // Programming keywords (C, C++, JS, TS, Python, Java, Go, Rust)
+      const keywords =
+        /\b(int|char|double|float|bool|void|long|short|unsigned|signed|struct|typedef|union|enum|const|let|var|function|def|class|import|from|export|default|return|if|else|while|for|do|break|continue|switch|case|true|false|null|nullptr|nil|None|True|False|async|await|try|catch|finally|throw|new|this|self|public|private|protected|static|sizeof)\b/g
+      esc = esc.replace(keywords, '<span class="text-purple-400 font-semibold">$1</span>')
+
+      // Number literals
+      esc = esc.replace(/\b(\d+(?:\.\d+)?(?:f|u|l)?)\b/gi, '<span class="text-amber-400">$1</span>')
+
+      return esc
+    })
+    .join('\n')
+}
+
+// Google Gemini styled CodeBlock
+function CodeBlock({ language, code, isIncomplete = false }) {
   const [copied, setCopied] = useState(false)
 
   const handleCopyCode = async () => {
@@ -27,34 +88,50 @@ function CodeBlock({ language, code }) {
     }
   }
 
+  const cleanLang = (language || 'code').trim()
+  const highlighted = highlightSyntax(code, cleanLang)
+
   return (
-    <div className="my-3 rounded-xl overflow-hidden border border-neutral-800 bg-neutral-950/90 shadow-lg">
-      <div className="flex items-center justify-between px-3.5 py-1.5 bg-neutral-900/90 border-b border-neutral-800/80 text-xs">
-        <span className="font-mono text-neutral-400 font-medium lowercase">
-          {language || 'code'}
-        </span>
+    <div className="my-4 rounded-2xl overflow-hidden border border-neutral-700/60 bg-[#16171a] shadow-2xl">
+      {/* Header Bar */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[#202124] border-b border-neutral-800">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+          <span className="font-mono text-xs font-semibold text-neutral-300 uppercase tracking-wider">
+            {cleanLang}
+          </span>
+          {isIncomplete && (
+            <span className="text-[10px] text-amber-400 font-mono bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+              generating...
+            </span>
+          )}
+        </div>
         <button
           type="button"
           onClick={handleCopyCode}
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
-          title="Copy code"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-neutral-300 hover:text-white bg-neutral-800/80 hover:bg-neutral-700/90 border border-neutral-700/60 transition-all cursor-pointer shadow-sm active:scale-95"
+          title="Copy code to clipboard"
         >
           {copied ? (
             <>
-              <Check className="h-3 w-3 text-emerald-400" />
-              <span className="text-[11px] text-emerald-400 font-medium">Copied!</span>
+              <Check className="h-3.5 w-3.5 text-emerald-400" />
+              <span className="text-emerald-400 font-medium">Copied!</span>
             </>
           ) : (
             <>
-              <Copy className="h-3 w-3" />
-              <span className="text-[11px]">Copy</span>
+              <Copy className="h-3.5 w-3.5 text-neutral-400" />
+              <span>Copy code</span>
             </>
           )}
         </button>
       </div>
-      <pre className="p-3.5 overflow-x-auto text-xs sm:text-sm font-mono text-neutral-200 leading-relaxed selection:bg-emerald-500/30">
-        <code>{code}</code>
-      </pre>
+
+      {/* Code Content */}
+      <div className="relative p-4 sm:p-5 overflow-x-auto selection:bg-emerald-500/30">
+        <pre className="font-mono text-[13px] sm:text-[14px] leading-relaxed text-neutral-200">
+          <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+        </pre>
+      </div>
     </div>
   )
 }
@@ -78,7 +155,7 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
     }
   }
 
-  // Parse inline text with bold, italic, inline code
+  // Parse inline text with bold, italic, and inline code
   const renderInlineMarkdown = (text) => {
     if (!text) return null
     // Matches: `code`, **bold**, *italic*
@@ -112,45 +189,87 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
     })
   }
 
-  // Comprehensive Markdown formatter for Gemini-quality output
-  const formatText = (content) => {
-    if (!content) return null
-
-    // Extract code fences first
-    const codeFenceRegex = /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g
+  // Bulletproof markdown parser handling CRLF, in-progress code fences, and structure
+  const parseMarkdownBlocks = (rawContent) => {
+    if (!rawContent) return []
+    const normalized = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    const lines = normalized.split('\n')
     const blocks = []
-    let lastIndex = 0
-    let match
 
-    while ((match = codeFenceRegex.exec(content)) !== null) {
-      if (match.index > lastIndex) {
-        blocks.push({
-          type: 'text',
-          content: content.slice(lastIndex, match.index),
-        })
+    let inCodeBlock = false
+    let currentCodeLines = []
+    let currentLang = ''
+    let currentTextLines = []
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const trimmed = line.trim()
+
+      if (trimmed.startsWith('```')) {
+        if (!inCodeBlock) {
+          if (currentTextLines.length > 0) {
+            blocks.push({ type: 'text', content: currentTextLines.join('\n') })
+            currentTextLines = []
+          }
+          inCodeBlock = true
+          currentLang = trimmed.slice(3).trim()
+          currentCodeLines = []
+        } else {
+          inCodeBlock = false
+          blocks.push({
+            type: 'code',
+            language: currentLang || 'code',
+            code: currentCodeLines.join('\n'),
+            isIncomplete: false,
+          })
+          currentCodeLines = []
+          currentLang = ''
+        }
+      } else if (inCodeBlock) {
+        currentCodeLines.push(line)
+      } else {
+        currentTextLines.push(line)
       }
+    }
+
+    if (inCodeBlock) {
       blocks.push({
         type: 'code',
-        language: match[1] || '',
-        code: match[2].trimEnd(),
+        language: currentLang || 'code',
+        code: currentCodeLines.join('\n'),
+        isIncomplete: true,
       })
-      lastIndex = match.index + match[0].length
+    } else if (currentTextLines.length > 0) {
+      blocks.push({ type: 'text', content: currentTextLines.join('\n') })
     }
 
-    if (lastIndex < content.length) {
-      blocks.push({
-        type: 'text',
-        content: content.slice(lastIndex),
-      })
-    }
+    return blocks
+  }
+
+  const formatText = (content) => {
+    const blocks = parseMarkdownBlocks(content)
 
     return blocks.map((block, bIdx) => {
       if (block.type === 'code') {
-        return <CodeBlock key={`code-${bIdx}`} language={block.language} code={block.code} />
+        return (
+          <CodeBlock
+            key={`code-${bIdx}`}
+            language={block.language}
+            code={block.code}
+            isIncomplete={block.isIncomplete}
+          />
+        )
       }
 
       const lines = block.content.split('\n')
       return lines.map((line, idx) => {
+        const trimmed = line.trim()
+
+        // Horizontal Rule (--- or ***)
+        if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+          return <hr key={`${bIdx}-${idx}`} className="my-4 border-neutral-800" />
+        }
+
         // Headers
         if (line.startsWith('# ')) {
           return (
@@ -161,14 +280,14 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
         }
         if (line.startsWith('## ')) {
           return (
-            <h3 key={`${bIdx}-${idx}`} className="text-base sm:text-lg font-semibold text-white mt-3 mb-1.5 tracking-tight">
+            <h3 key={`${bIdx}-${idx}`} className="text-base sm:text-lg font-semibold text-white mt-3.5 mb-1.5 tracking-tight">
               {line.replace(/^##\s+/, '')}
             </h3>
           )
         }
         if (line.startsWith('### ')) {
           return (
-            <h4 key={`${bIdx}-${idx}`} className="text-sm sm:text-base font-semibold text-emerald-400 mt-2.5 mb-1">
+            <h4 key={`${bIdx}-${idx}`} className="text-sm sm:text-base font-semibold text-emerald-400 mt-3 mb-1">
               {line.replace(/^###\s+/, '')}
             </h4>
           )
@@ -196,7 +315,7 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
           )
         }
 
-        // Bullet point: * Item or - Item
+        // Bullet list: * Item or - Item
         if (line.startsWith('* ') || line.startsWith('- ')) {
           const itemText = line.slice(2)
           return (
@@ -219,7 +338,7 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
         }
 
         // Empty line
-        if (line.trim() === '') {
+        if (trimmed === '') {
           return <div key={`${bIdx}-${idx}`} className="h-2" />
         }
 
