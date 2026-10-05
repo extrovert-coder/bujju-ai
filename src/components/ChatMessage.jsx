@@ -13,64 +13,88 @@ import {
   ExternalLink,
 } from 'lucide-react'
 
-// Syntax highlighter that mirrors Google Gemini's rich code formatting
-function highlightSyntax(rawCode, language = '') {
-  if (!rawCode) return ''
+// Single-pass lexical tokenizer for Gemini-quality code syntax highlighting
+function tokenizeCode(code) {
+  if (!code) return []
 
-  const escapeHtml = (str) =>
-    str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
+  const TOKEN_REGEX =
+    /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(#(?:include|define|pragma|ifndef|ifdef|endif)[^\n]*)|(\b(?:int|char|double|float|bool|void|long|short|unsigned|signed|struct|typedef|union|enum|const|let|var|function|def|class|import|from|export|default|return|if|else|while|for|do|break|continue|switch|case|true|false|null|nullptr|nil|None|True|False|async|await|try|catch|finally|throw|new|this|self|public|private|protected|static|sizeof)\b)|(\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\())|(\b\d+(?:\.\d+)?(?:f|u|l)?\b)|(\s+)|([^\s\w]+)|([a-zA-Z_][a-zA-Z0-9_]*)/g
 
-  const lang = (language || '').toLowerCase().trim()
-  const lines = rawCode.split('\n')
+  let match
+  const tokens = []
 
-  return lines
-    .map((line) => {
-      let esc = escapeHtml(line)
-      const trimmed = esc.trim()
+  while ((match = TOKEN_REGEX.exec(code)) !== null) {
+    const [raw, comment, str, prep, kw, fn, num] = match
+    if (comment) {
+      tokens.push({ type: 'comment', value: raw })
+    } else if (str) {
+      tokens.push({ type: 'string', value: raw })
+    } else if (prep) {
+      tokens.push({ type: 'preprocessor', value: raw })
+    } else if (kw) {
+      tokens.push({ type: 'keyword', value: raw })
+    } else if (fn) {
+      tokens.push({ type: 'function', value: raw })
+    } else if (num) {
+      tokens.push({ type: 'number', value: raw })
+    } else {
+      tokens.push({ type: 'plain', value: raw })
+    }
+  }
 
-      // Full-line comments
-      if (
-        trimmed.startsWith('//') ||
-        trimmed.startsWith('/*') ||
-        (trimmed.startsWith('#') && !esc.includes('&lt;') && lang !== 'c' && lang !== 'cpp')
-      ) {
-        return `<span class="text-neutral-500 italic">${esc}</span>`
-      }
+  return tokens
+}
 
-      // C/C++ Preprocessor Directives (#include, #define, etc.)
-      if (esc.includes('#include') || esc.includes('#define') || esc.includes('#ifndef') || esc.includes('#endif')) {
-        esc = esc.replace(
-          /(#(?:include|define|ifndef|ifdef|endif|pragma))\s*(&lt;.*?&gt;|&quot;.*?&quot;|[a-zA-Z0-9_]+)?/g,
-          '<span class="text-pink-400 font-semibold">$1</span> <span class="text-emerald-300 font-medium">$2</span>'
-        )
-      }
+// Render tokenized code as clean, safe React spans (no HTML string replaces)
+function CodeContent({ code }) {
+  const tokens = tokenizeCode(code)
 
-      // String literals: "...", '...', `...`
-      esc = esc.replace(
-        /(&quot;.*?&quot;|&#39;.*?&#39;|`.*?`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g,
-        '<span class="text-emerald-300">$1</span>'
-      )
-
-      // Function calls: name(...)
-      esc = esc.replace(
-        /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(?=\()/g,
-        '<span class="text-sky-300 font-medium">$1</span>'
-      )
-
-      // Programming keywords (C, C++, JS, TS, Python, Java, Go, Rust)
-      const keywords =
-        /\b(int|char|double|float|bool|void|long|short|unsigned|signed|struct|typedef|union|enum|const|let|var|function|def|class|import|from|export|default|return|if|else|while|for|do|break|continue|switch|case|true|false|null|nullptr|nil|None|True|False|async|await|try|catch|finally|throw|new|this|self|public|private|protected|static|sizeof)\b/g
-      esc = esc.replace(keywords, '<span class="text-purple-400 font-semibold">$1</span>')
-
-      // Number literals
-      esc = esc.replace(/\b(\d+(?:\.\d+)?(?:f|u|l)?)\b/gi, '<span class="text-amber-400">$1</span>')
-
-      return esc
-    })
-    .join('\n')
+  return (
+    <code>
+      {tokens.map((token, index) => {
+        switch (token.type) {
+          case 'comment':
+            return (
+              <span key={index} className="text-neutral-500 italic">
+                {token.value}
+              </span>
+            )
+          case 'string':
+            return (
+              <span key={index} className="text-emerald-300">
+                {token.value}
+              </span>
+            )
+          case 'preprocessor':
+            return (
+              <span key={index} className="text-pink-400 font-semibold">
+                {token.value}
+              </span>
+            )
+          case 'keyword':
+            return (
+              <span key={index} className="text-purple-400 font-semibold">
+                {token.value}
+              </span>
+            )
+          case 'function':
+            return (
+              <span key={index} className="text-sky-300 font-medium">
+                {token.value}
+              </span>
+            )
+          case 'number':
+            return (
+              <span key={index} className="text-amber-400">
+                {token.value}
+              </span>
+            )
+          default:
+            return <span key={index}>{token.value}</span>
+        }
+      })}
+    </code>
+  )
 }
 
 // Google Gemini styled CodeBlock
@@ -89,7 +113,6 @@ function CodeBlock({ language, code, isIncomplete = false }) {
   }
 
   const cleanLang = (language || 'code').trim()
-  const highlighted = highlightSyntax(code, cleanLang)
 
   return (
     <div className="my-4 rounded-2xl overflow-hidden border border-neutral-700/60 bg-[#16171a] shadow-2xl">
@@ -129,7 +152,7 @@ function CodeBlock({ language, code, isIncomplete = false }) {
       {/* Code Content */}
       <div className="relative p-4 sm:p-5 overflow-x-auto selection:bg-emerald-500/30">
         <pre className="font-mono text-[13px] sm:text-[14px] leading-relaxed text-neutral-200">
-          <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+          <CodeContent code={code} />
         </pre>
       </div>
     </div>
