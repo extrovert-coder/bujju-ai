@@ -1,3 +1,4 @@
+import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import express from 'express'
@@ -1670,6 +1671,16 @@ Web Search is active. Provide current, accurate, and comprehensive information. 
     })
   }
 })
+
+// Serve static client assets in production (Full-stack single service deployment)
+const distPath = path.resolve(__dirname, '../dist')
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath))
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next()
+    res.sendFile(path.join(distPath, 'index.html'))
+  })
+}
 
 // Start server
 app.listen(PORT, () => {
