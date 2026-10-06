@@ -40,6 +40,12 @@ function sanitizeErrorMessage(err, fallback = 'Something went wrong. Please try 
   return msg
 }
 
+let messageSequence = 0
+function createMessageId(prefix = 'msg') {
+  messageSequence += 1
+  return `${prefix}-${Date.now()}-${messageSequence}`
+}
+
 export default function App() {
   const [user, setUser] = useState(null)
   const [session, setSession] = useState(null)
@@ -391,10 +397,28 @@ export default function App() {
 
   // Initial fetch of memories whenever user logs in or changes
   useEffect(() => {
-    if (user?.id) {
-      fetchMemories()
+    if (!user?.id) return
+    let isSubscribed = true
+
+    async function loadInitialMemories() {
+      try {
+        const headers = await getAuthHeaders()
+        const res = await fetch(apiUrl('/api/memories'), { headers })
+        if (res.ok && isSubscribed) {
+          const data = await res.json()
+          setMemories(Array.isArray(data.memories) ? data.memories : [])
+        }
+      } catch (err) {
+        console.warn('[Bujju AI Memory] Failed to fetch memories:', err)
+      }
     }
-  }, [user?.id, fetchMemories])
+
+    loadInitialMemories()
+
+    return () => {
+      isSubscribed = false
+    }
+  }, [user?.id, getAuthHeaders])
 
   // Teach Bujju AI a new memory / instruction manually
   const handleTeachMemory = async (fact, category) => {
@@ -574,7 +598,7 @@ export default function App() {
       : trimmedInput
 
     const userMsg = {
-      id: `u-${Date.now()}`,
+      id: createMessageId('u'),
       sender: 'user',
       text: userMessageDisplay,
       timestamp: formatTime(null),
@@ -618,7 +642,7 @@ export default function App() {
         setActiveImage(null)
 
         const aiReply = {
-          id: `ai-${Date.now()}`,
+          id: createMessageId('ai'),
           sender: 'ai',
           text: data.reply,
           sources: data.sources || null,
@@ -644,7 +668,7 @@ export default function App() {
 
         const contentType = response.headers.get('content-type') || ''
         if (contentType.includes('text/event-stream')) {
-          const tempAiId = `ai-${Date.now()}`
+          const tempAiId = createMessageId('ai')
           setMessages((prev) => [
             ...prev,
             {
@@ -662,7 +686,7 @@ export default function App() {
             throw new Error(data.error || `Server returned error status ${response.status}`)
           }
           const aiReply = {
-            id: `ai-${Date.now()}`,
+            id: createMessageId('ai'),
             sender: 'ai',
             text: data.reply,
             sources: data.sources || null,
@@ -725,7 +749,7 @@ export default function App() {
         'Unable to connect to the AI service. Please verify your connection and try again.',
       )
       const errorReply = {
-        id: `err-${Date.now()}`,
+        id: createMessageId('err'),
         sender: 'ai',
         isError: true,
         text: cleanError,
