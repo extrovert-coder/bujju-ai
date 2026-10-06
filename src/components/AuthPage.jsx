@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react'
-import { Mail, Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { Mail, Lock, User, Eye, EyeOff, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import BujjuLogo from './BujjuLogo'
 
-export default function AuthPage({ onLogin, onSignup, initialMode = 'login' }) {
+export default function AuthPage({ onLogin, onSignup, initialMode = 'login', onBack }) {
   const [mode, setMode] = useState(initialMode) // 'login' | 'signup'
   const isSubmittingRef = useRef(false)
   const [name, setName] = useState('')
@@ -116,6 +116,18 @@ export default function AuthPage({ onLogin, onSignup, initialMode = 'login' }) {
 
       {/* Main Auth Card */}
       <div className="w-full max-w-md bg-[#1e1f20]/95 border border-white/5 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative z-10 transition-all duration-300">
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-4 inline-flex items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-white transition-colors cursor-pointer py-1.5 px-3 rounded-full hover:bg-white/5 border border-white/5 focus:outline-none focus:ring-2 focus:ring-[#4285f4]"
+            aria-label="Back to Bujju AI Overview"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>Back to Overview</span>
+          </button>
+        )}
+
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-8">
           <div className="mb-3">

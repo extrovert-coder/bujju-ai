@@ -283,7 +283,7 @@ AI replied: "${(aiReply || '').slice(0, 300)}"`
         })
         rawText = response?.text?.trim() || ''
         if (rawText) break
-      } catch (err) {
+      } catch {
         // Continue to next fallback model
       }
     }

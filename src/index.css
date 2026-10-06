@@ -103,3 +103,77 @@ body,
 .gemini-cursor-blink {
   animation: gemini-cursor 0.9s ease-in-out infinite;
 }
+
+/* Bujju AI Public Welcome & Landing Animations */
+@keyframes bujju-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bujju-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bujju-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes bujju-float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.animate-bujju-fade {
+  animation: bujju-fade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-bujju-up {
+  animation: bujju-slide-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-bujju-scale {
+  animation: bujju-scale-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-bujju-float {
+  animation: bujju-float 4.5s ease-in-out infinite;
+}
+
+/* Accessibility: Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-bujju-float,
+  .gemini-aurora-glow,
+  .gemini-shimmer-bar {
+    animation: none !important;
+  }
+}

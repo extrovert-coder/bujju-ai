@@ -75,7 +75,7 @@ const cleanup = () => {
       backend.kill('SIGINT')
       frontend.kill('SIGINT')
     }
-  } catch (err) {
+  } catch {
     // Ignore cleanup errors
   }
   process.exit(0)

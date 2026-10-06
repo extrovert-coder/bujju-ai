@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import AuthPage from './components/AuthPage'
+import LandingPage from './components/LandingPage'
 import MemoryModal from './components/MemoryModal'
+import { BujjuIcon } from './components/BujjuLogo'
 import { supabase } from './lib/supabaseClient'
 import { speakText, stopSpeaking } from './utils/speech'
 import { apiUrl } from './lib/api'
@@ -42,6 +44,7 @@ export default function App() {
   const [user, setUser] = useState(null)
   const [session, setSession] = useState(null)
   const [isAuthLoading, setIsAuthLoading] = useState(true)
+  const [authMode, setAuthMode] = useState(null) // null = LandingPage, 'login', 'signup'
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [conversations, setConversations] = useState([])
@@ -997,6 +1000,7 @@ export default function App() {
     }
     setUser(null)
     setSession(null)
+    setAuthMode(null)
     setConversations([])
     setMessages([])
     setActiveChatId(null)
@@ -1006,21 +1010,37 @@ export default function App() {
     localStorage.removeItem('bujju_user')
   }
 
-  // While verifying session
+  // While verifying session (subtle brand loader, avoids flash)
   if (isAuthLoading) {
     return (
-      <div className="h-screen w-screen bg-neutral-950 flex items-center justify-center text-neutral-400">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
-          <span className="text-sm font-medium">Loading Bujju AI...</span>
+      <div className="h-screen w-screen bg-[#131314] flex items-center justify-center text-neutral-400">
+        <div className="flex flex-col items-center gap-3.5">
+          <BujjuIcon size={48} animated={true} glow={true} />
+          <span className="text-xs font-medium text-neutral-400 tracking-wide">Loading Bujju AI...</span>
         </div>
       </div>
     )
   }
 
-  // If user is not logged in, render Login / Signup
+  // Unauthenticated experience: Show AuthPage when user chooses Login/Get Started, otherwise show LandingPage
   if (!user) {
-    return <AuthPage onLogin={handleLogin} onSignup={handleSignup} initialMode="login" />
+    if (authMode) {
+      return (
+        <AuthPage
+          onLogin={handleLogin}
+          onSignup={handleSignup}
+          initialMode={authMode}
+          onBack={() => setAuthMode(null)}
+        />
+      )
+    }
+
+    return (
+      <LandingPage
+        onLogin={() => setAuthMode('login')}
+        onGetStarted={() => setAuthMode('signup')}
+      />
+    )
   }
 
   // Logged-in user view: Bujju AI Chat
