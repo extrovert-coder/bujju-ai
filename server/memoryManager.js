@@ -212,22 +212,34 @@ export async function extractMemoriesFromConversation({
   userMessage,
   aiReply,
   apiKey,
-  model = 'gemini-3.5-flash-lite',
+  model = null,
   scopedClient = null,
 }) {
   if (!userId || !userMessage || !apiKey) return []
 
   const msgTrimmed = userMessage.trim()
   // Skip trivial greetings or very short messages
-  if (msgTrimmed.length < 5 && /^(hi|hello|hey|ok|thanks|bye)$/i.test(msgTrimmed)) {
+  if (msgTrimmed.length < 5 && /^(hi|hello|hey|ok|thanks|bye|yes|no)$/i.test(msgTrimmed)) {
     return []
   }
+
+  const candidateModels = [
+    model,
+    process.env.GEMINI_MODEL,
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-3.5-flash-lite',
+  ]
+    .filter(Boolean)
+    .map((m) => m.replace(/^models\//, ''))
+    .filter((m, i, arr) => arr.indexOf(m) === i)
 
   try {
     const ai = new GoogleGenAI({ apiKey })
 
-    const extractionInstruction = `You are the Learning & Memory Extraction Engine for Bujju AI.
-Your job is to detect and extract long-term knowledge, personal preferences, project context, guidelines, or corrections that the user revealed about themselves, their tech stack, their work, or how they want Bujju AI to behave.
+    const extractionInstruction = `You are the Autonomous Self-Training & Memory Engine for Bujju AI.
+Your job is to automatically detect and extract durable knowledge, user preferences, project context, guidelines, or corrections that the user revealed about themselves, their tech stack, their work, or how they want Bujju AI to behave.
 
 CRITICAL RULES:
 1. ONLY extract permanent or durable information (e.g., "I work with Vue 3", "My name is Priya", "I prefer TypeScript over JS", "Our database is PostgreSQL", "Never use semicolons in JavaScript", "I live in Berlin", "I'm building an e-commerce platform").
@@ -253,21 +265,28 @@ Respond strictly with valid JSON array in this format:
     const prompt = `User said: "${msgTrimmed}"
 AI replied: "${(aiReply || '').slice(0, 300)}"`
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: `${extractionInstruction}\n\n${prompt}` }],
-        },
-      ],
-      config: {
-        temperature: 0.1,
-        responseMimeType: 'application/json',
-      },
-    })
-
-    const rawText = response?.text?.trim()
+    let rawText = ''
+    for (const testModel of candidateModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model: testModel,
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${extractionInstruction}\n\n${prompt}` }],
+            },
+          ],
+          config: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
+          },
+        })
+        rawText = response?.text?.trim() || ''
+        if (rawText) break
+      } catch (err) {
+        // Continue to next fallback model
+      }
+    }
     if (!rawText) return []
 
     let parsed = []
