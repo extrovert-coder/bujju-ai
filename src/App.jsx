@@ -4,6 +4,7 @@ import ChatArea from './components/ChatArea'
 import AuthPage from './components/AuthPage'
 import LandingPage from './components/LandingPage'
 import MemoryModal from './components/MemoryModal'
+import SplashScreen from './components/SplashScreen'
 import { BujjuIcon } from './components/BujjuLogo'
 import { supabase } from './lib/supabaseClient'
 import { speakText, stopSpeaking } from './utils/speech'
@@ -49,16 +50,32 @@ function createMessageId(prefix = 'msg') {
 export default function App() {
   const [user, setUser] = useState(null)
   const [session, setSession] = useState(null)
-  const [isAuthLoading, setIsAuthLoading] = useState(true)
+  const [isInitializingAuth, setIsInitializingAuth] = useState(true)
   const [authMode, setAuthMode] = useState(null) // null = LandingPage, 'login', 'signup'
+
+  // Splash Screen: session-scoped for new tabs only (never repeats in same tab)
+  const [showSplash, setShowSplash] = useState(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return !sessionStorage.getItem('bujju_ai_splash_seen')
+    } catch {
+      return false
+    }
+  })
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [conversations, setConversations] = useState([])
   const [activeChatId, setActiveChatId] = useState(null)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [isChatLoading, setIsChatLoading] = useState(false)
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false)
+
+  // Real-time server-authoritative AI quota states
+  const [usage, setUsage] = useState(null)
+  const [isUsageLoading, setIsUsageLoading] = useState(false)
+  const [usageError, setUsageError] = useState(null)
 
   // Step 6 & 7: Attachment states (PDF & Image)
   const [activeFile, setActiveFile] = useState(null)
@@ -110,8 +127,24 @@ export default function App() {
     return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
+  // Splash finish handler: set session-scoped flag so it never repeats in same tab
+  const handleSplashFinish = useCallback(() => {
+    try {
+      sessionStorage.setItem('bujju_ai_splash_seen', 'true')
+    } catch {}
+    setShowSplash(false)
+  }, [])
+
   // Check auth session on mount and subscribe to changes
   useEffect(() => {
+    let authDone = false
+    // Safety max timeout: never freeze forever on slow auth initialization
+    const safetyTimeout = setTimeout(() => {
+      if (!authDone) {
+        setIsInitializingAuth(false)
+      }
+    }, 4500)
+
     async function checkSession() {
       try {
         if (supabase) {
@@ -136,7 +169,9 @@ export default function App() {
       } catch (err) {
         console.error('Session check error:', err)
       } finally {
-        setIsAuthLoading(false)
+        authDone = true
+        clearTimeout(safetyTimeout)
+        setIsInitializingAuth(false)
       }
     }
 
@@ -155,6 +190,7 @@ export default function App() {
           setActiveFile(null)
           setUploadError(null)
           setUploadSuccess(null)
+          setUsage(null)
         }
       })
 
@@ -164,11 +200,11 @@ export default function App() {
     }
   }, [])
 
-  // Load conversation messages by ID
+  // Load conversation messages by ID - ONLY called when a specific active conversation exists
   const loadConversationMessages = useCallback(
     async (convId) => {
       if (!convId || !user) return
-      setIsChatLoading(true)
+      setIsLoadingMessages(true)
       try {
         const headers = await getAuthHeaders()
         const res = await fetch(apiUrl(`/api/conversations/${convId}`), {
@@ -207,7 +243,7 @@ export default function App() {
           return null
         })
       } finally {
-        setIsChatLoading(false)
+        setIsLoadingMessages(false)
       }
     },
     [user, getAuthHeaders],
@@ -239,8 +275,8 @@ export default function App() {
     [speakingMessageId, voiceRate, voiceLang, handleStopSpeaking],
   )
 
-  // Create a brand new conversation for the user
-  const handleNewChat = useCallback(async () => {
+  // Start a fresh new chat: resets active chat and displays clean welcome screen immediately
+  const handleNewChat = useCallback(() => {
     if (!user) return
 
     handleStopSpeaking()
@@ -251,35 +287,19 @@ export default function App() {
     })
     setUploadError(null)
     setUploadSuccess(null)
-
-    try {
-      const headers = await getAuthHeaders()
-      const res = await fetch(apiUrl('/api/conversations'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ title: 'New Chat' }),
-      })
-
-      if (res.ok) {
-        const newConv = await res.json()
-        setConversations((prev) => [newConv, ...prev])
-        setActiveChatId(newConv.id)
-        setMessages([])
-        localStorage.setItem(`bujju_active_chat_${user.id}`, newConv.id)
-      }
-    } catch (err) {
-      console.error('Error creating new conversation:', err)
-    }
+    setActiveChatId(null)
+    setMessages([])
     setIsSidebarOpen(false)
-  }, [user, getAuthHeaders, handleStopSpeaking])
+  }, [user, handleStopSpeaking])
 
-  // Fetch conversations whenever user logs in or switches
+  // Fetch conversations independently in background whenever user logs in or switches
   useEffect(() => {
     if (!user) return
 
     let isMounted = true
 
     async function fetchUserConversations() {
+      setIsLoadingConversations(true)
       try {
         const headers = await getAuthHeaders()
         const res = await fetch(apiUrl('/api/conversations'), {
@@ -292,27 +312,14 @@ export default function App() {
 
         const validList = Array.isArray(list) ? list : []
         setConversations(validList)
-
-        if (validList.length > 0) {
-          const savedActiveId = localStorage.getItem(`bujju_active_chat_${user.id}`)
-          const found = validList.find((c) => c.id === savedActiveId)
-          const targetId = found ? found.id : validList[0].id
-
-          setActiveChatId(targetId)
-          localStorage.setItem(`bujju_active_chat_${user.id}`, targetId)
-          await loadConversationMessages(targetId)
-        } else {
-          setActiveChatId(null)
-          setMessages([])
-          setActiveFile(null)
-        }
       } catch (err) {
         if (!isMounted) return
         console.error('Failed to fetch user conversations:', err)
         setConversations([])
-        setActiveChatId(null)
-        setMessages([])
-        setActiveFile(null)
+      } finally {
+        if (isMounted) {
+          setIsLoadingConversations(false)
+        }
       }
     }
 
@@ -321,7 +328,43 @@ export default function App() {
     return () => {
       isMounted = false
     }
-  }, [user, getAuthHeaders, loadConversationMessages])
+  }, [user, getAuthHeaders])
+
+  // Independent fetch of usage whenever user logs in or switches
+  useEffect(() => {
+    if (!user) return
+    let isSubscribed = true
+
+    async function loadInitialUsage() {
+      setIsUsageLoading(true)
+      try {
+        const headers = await getAuthHeaders()
+        const res = await fetch(apiUrl('/api/usage'), { headers })
+        if (res.ok && isSubscribed) {
+          const data = await res.json()
+          setUsage(data)
+          setUsageError(null)
+        } else if (isSubscribed) {
+          setUsageError('Usage unavailable')
+        }
+      } catch (err) {
+        if (isSubscribed) {
+          console.warn('[Bujju AI] Failed to fetch usage:', err)
+          setUsageError('Usage unavailable')
+        }
+      } finally {
+        if (isSubscribed) {
+          setIsUsageLoading(false)
+        }
+      }
+    }
+
+    loadInitialUsage()
+
+    return () => {
+      isSubscribed = false
+    }
+  }, [user, getAuthHeaders])
 
   // Keyboard shortcut: Ctrl+K or Cmd+K to start a new chat
   useEffect(() => {
@@ -586,7 +629,7 @@ export default function App() {
 
   // Send message
   const handleSend = async () => {
-    if ((!input.trim() && !activeImage) || isLoading || !user) return
+    if ((!input.trim() && !activeImage) || isSendingMessage || !user) return
 
     handleStopSpeaking()
 
@@ -606,7 +649,12 @@ export default function App() {
 
     setMessages((prev) => [...prev, userMsg])
     setInput('')
-    setIsLoading(true)
+    setIsSendingMessage(true)
+
+    const abortController = new AbortController()
+    const timeoutId = setTimeout(() => {
+      abortController.abort(new Error('AI generation timed out. Please try again.'))
+    }, 90000)
 
     try {
       const authHeaders = await getAuthHeaders()
@@ -629,11 +677,15 @@ export default function App() {
           method: 'POST',
           headers,
           body: formData,
+          signal: abortController.signal,
         })
         data = await response.json()
         if (!response.ok) {
+          if (data?.usage) setUsage(data.usage)
           throw new Error(data.error || `Image analysis failed with status ${response.status}`)
         }
+
+        if (data?.usage) setUsage(data.usage)
 
         // Clean up preview URL
         if (currentImg.previewUrl) {
@@ -664,6 +716,7 @@ export default function App() {
             webSearch: isWebSearch,
             stream: true,
           }),
+          signal: abortController.signal,
         })
 
         const contentType = response.headers.get('content-type') || ''
@@ -680,11 +733,14 @@ export default function App() {
             },
           ])
           data = await handleChatStream(response, tempAiId)
+          if (data?.usage) setUsage(data.usage)
         } else {
           data = await response.json()
           if (!response.ok) {
+            if (data?.usage) setUsage(data.usage)
             throw new Error(data.error || `Server returned error status ${response.status}`)
           }
+          if (data?.usage) setUsage(data.usage)
           const aiReply = {
             id: createMessageId('ai'),
             sender: 'ai',
@@ -744,10 +800,13 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error in handleSend:', err)
-      const cleanError = sanitizeErrorMessage(
-        err,
-        'Unable to connect to the AI service. Please verify your connection and try again.',
-      )
+      const isTimeout = err.name === 'AbortError' || err.message?.includes('timed out')
+      const cleanError = isTimeout
+        ? 'AI generation timed out. Please try again.'
+        : sanitizeErrorMessage(
+            err,
+            'Unable to connect to the AI service. Please verify your connection and try again.',
+          )
       const errorReply = {
         id: createMessageId('err'),
         sender: 'ai',
@@ -755,9 +814,13 @@ export default function App() {
         text: cleanError,
         timestamp: formatTime(null),
       }
-      setMessages((prev) => [...prev, errorReply])
+      setMessages((prev) => [
+        ...prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
+        errorReply,
+      ])
     } finally {
-      setIsLoading(false)
+      clearTimeout(timeoutId)
+      setIsSendingMessage(false)
       // Allow background extraction to complete then refresh learned memory badge
       setTimeout(() => {
         fetchMemories()
@@ -772,64 +835,93 @@ export default function App() {
     let buffer = ''
     let accumulatedText = ''
     let finalMeta = null
+    let streamDone = false
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+    const processLine = (line) => {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith('data: ')) return
+      const jsonStr = trimmed.slice(6).trim()
+      if (!jsonStr) return
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed.startsWith('data: ')) continue
-        const jsonStr = trimmed.slice(6)
-        if (!jsonStr) continue
-
-        try {
-          const payload = JSON.parse(jsonStr)
-          if (payload.type === 'chunk' && payload.text) {
-            accumulatedText += payload.text
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === tempAiId ? { ...m, text: accumulatedText, isStreaming: true } : m,
-              ),
-            )
-          } else if (payload.type === 'done') {
-            finalMeta = payload
-            accumulatedText = payload.reply || accumulatedText
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === tempAiId
-                  ? {
-                      ...m,
-                      text: accumulatedText,
-                      sources: payload.sources || null,
-                      isStreaming: false,
-                    }
-                  : m,
-              ),
-            )
-          } else if (payload.type === 'error') {
-            throw new Error(payload.error || 'Streaming error occurred.')
-          }
-        } catch (parseErr) {
-          if (parseErr.message?.includes('Streaming error')) throw parseErr
+      try {
+        const payload = JSON.parse(jsonStr)
+        if (payload.type === 'chunk' && payload.text) {
+          accumulatedText += payload.text
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempAiId ? { ...m, text: accumulatedText, isStreaming: true } : m,
+            ),
+          )
+        } else if (payload.type === 'done') {
+          streamDone = true
+          finalMeta = payload
+          accumulatedText = payload.reply || accumulatedText
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempAiId
+                ? {
+                    ...m,
+                    text: accumulatedText,
+                    sources: payload.sources || m.sources || null,
+                    isStreaming: false,
+                  }
+                : m,
+            ),
+          )
+        } else if (payload.type === 'error') {
+          streamDone = true
+          throw new Error(payload.error || 'AI generation failed.')
         }
+      } catch (parseErr) {
+        if (parseErr.message?.includes('AI generation failed')) throw parseErr
       }
     }
 
-    setMessages((prev) =>
-      prev.map((m) => (m.id === tempAiId ? { ...m, isStreaming: false } : m)),
-    )
+    try {
+      while (!streamDone) {
+        const { done, value } = await reader.read()
+        if (done) {
+          if (buffer.trim()) {
+            processLine(buffer)
+            buffer = ''
+          }
+          break
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          processLine(line)
+          if (streamDone) break
+        }
+      }
+    } finally {
+      try {
+        await reader.cancel()
+      } catch {}
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempAiId
+            ? {
+                ...m,
+                text: accumulatedText,
+                sources: finalMeta?.sources || m.sources || null,
+                isStreaming: false,
+              }
+            : m,
+        ),
+      )
+    }
+
     return finalMeta || { reply: accumulatedText }
   }
 
   // Clear messages in current view
   const handleClearChat = () => {
     handleStopSpeaking()
-    if (isLoading) return
+    if (isSendingMessage) return
     setMessages([])
   }
 
@@ -837,9 +929,14 @@ export default function App() {
   const handleRegenerate = async () => {
     handleStopSpeaking()
     const lastUserMessage = [...messages].reverse().find((m) => m.sender === 'user')
-    if (!lastUserMessage || isLoading || !user) return
+    if (!lastUserMessage || isSendingMessage || !user) return
 
-    setIsLoading(true)
+    setIsSendingMessage(true)
+    const abortController = new AbortController()
+    const timeoutId = setTimeout(() => {
+      abortController.abort(new Error('AI generation timed out. Please try again.'))
+    }, 90000)
+
     try {
       const headers = await getAuthHeaders()
       const response = await fetch(apiUrl('/api/chat'), {
@@ -854,6 +951,7 @@ export default function App() {
           message: lastUserMessage.text,
           stream: true,
         }),
+        signal: abortController.signal,
       })
 
       const contentType = response.headers.get('content-type') || ''
@@ -869,12 +967,15 @@ export default function App() {
             timestamp: formatTime(null),
           },
         ])
-        await handleChatStream(response, tempAiId)
+        const streamData = await handleChatStream(response, tempAiId)
+        if (streamData?.usage) setUsage(streamData.usage)
       } else {
         const data = await response.json()
         if (!response.ok) {
+          if (data?.usage) setUsage(data.usage)
           throw new Error(data.error || `Server returned error status ${response.status}`)
         }
+        if (data?.usage) setUsage(data.usage)
         const aiReply = {
           id: `ai-${Date.now()}`,
           sender: 'ai',
@@ -885,16 +986,24 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error regenerating chat response:', err)
+      const isTimeout = err.name === 'AbortError' || err.message?.includes('timed out')
+      const cleanError = isTimeout
+        ? 'AI generation timed out. Please try again.'
+        : sanitizeErrorMessage(err, 'Failed to regenerate response. Please try again.')
       const errorReply = {
         id: `err-${Date.now()}`,
         sender: 'ai',
         isError: true,
-        text: sanitizeErrorMessage(err, 'Failed to regenerate response. Please try again.'),
+        text: cleanError,
         timestamp: formatTime(null),
       }
-      setMessages((prev) => [...prev, errorReply])
+      setMessages((prev) => [
+        ...prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
+        errorReply,
+      ])
     } finally {
-      setIsLoading(false)
+      clearTimeout(timeoutId)
+      setIsSendingMessage(false)
     }
   }
 
@@ -1034,8 +1143,13 @@ export default function App() {
     localStorage.removeItem('bujju_user')
   }
 
-  // While verifying session (subtle brand loader, avoids flash)
-  if (isAuthLoading) {
+  // 1. Premium Splash Screen (shown ONLY in new tabs, never on refresh in same tab)
+  if (showSplash) {
+    return <SplashScreen onFinish={handleSplashFinish} />
+  }
+
+  // 2. While verifying auth session (subtle brand loader, avoids flash)
+  if (isInitializingAuth) {
     return (
       <div className="h-screen w-screen bg-[#131314] flex items-center justify-center text-neutral-400">
         <div className="flex flex-col items-center gap-3.5">
@@ -1046,7 +1160,7 @@ export default function App() {
     )
   }
 
-  // Unauthenticated experience: Show AuthPage when user chooses Login/Get Started, otherwise show LandingPage
+  // 3. Unauthenticated experience: Show AuthPage when user chooses Login/Get Started, otherwise show LandingPage
   if (!user) {
     if (authMode) {
       return (
@@ -1067,10 +1181,10 @@ export default function App() {
     )
   }
 
-  // Logged-in user view: Bujju AI Chat
+  // 4. Logged-in user view: Bujju AI Chat
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-neutral-950 font-sans antialiased text-neutral-100">
-      {/* Left Sidebar */}
+      {/* Left Sidebar - Conversation list loads independently in background */}
       <Sidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -1086,9 +1200,10 @@ export default function App() {
           fetchMemories()
         }}
         memoriesCount={memories.length}
+        isLoadingConversations={isLoadingConversations}
       />
 
-      {/* Main Chat Area */}
+      {/* Main Chat Area - Never shows blocking conversation loader on empty new chat */}
       <ChatArea
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
         messages={messages}
@@ -1099,8 +1214,11 @@ export default function App() {
         onClearChat={handleClearChat}
         onRegenerate={handleRegenerate}
         onSelectSuggestion={handleSelectSuggestion}
-        isLoading={isLoading}
-        isChatLoading={isChatLoading}
+        isLoading={isSendingMessage}
+        isSendingMessage={isSendingMessage}
+        isLoadingMessages={isLoadingMessages}
+        isChatLoading={isLoadingMessages}
+        activeChatId={activeChatId}
         activeFile={activeFile}
         onUploadFile={handleFileUpload}
         onRemoveFile={handleRemoveFile}
@@ -1128,6 +1246,9 @@ export default function App() {
           fetchMemories()
         }}
         memoriesCount={memories.length}
+        usage={usage}
+        isUsageLoading={isUsageLoading}
+        usageError={usageError}
       />
 
       {/* Continuous Self-Training & Memory Modal */}

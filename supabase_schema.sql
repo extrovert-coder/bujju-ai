@@ -168,3 +168,34 @@ BEGIN
   END IF;
 END $$;
 
+-- 9. Create user_usage table for tracking server-authoritative daily message limits
+CREATE TABLE IF NOT EXISTS public.user_usage (
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  usage_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  message_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, usage_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_usage_user_date ON public.user_usage(user_id, usage_date);
+
+ALTER TABLE public.user_usage ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own usage" ON public.user_usage;
+CREATE POLICY "Users can view own usage"
+  ON public.user_usage FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert own usage" ON public.user_usage;
+CREATE POLICY "Users can insert own usage"
+  ON public.user_usage FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update own usage" ON public.user_usage;
+CREATE POLICY "Users can update own usage"
+  ON public.user_usage FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = user_id);
+

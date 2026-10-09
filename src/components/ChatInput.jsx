@@ -19,6 +19,7 @@ import {
   SUPPORTED_VOICE_LANGUAGES,
   VOICE_SPEEDS,
 } from '../utils/speech'
+import UsageIndicator from './UsageIndicator'
 
 export default function ChatInput({
   input,
@@ -43,6 +44,9 @@ export default function ChatInput({
   setVoiceRate,
   voiceLang = 'en-US',
   setVoiceLang,
+  usage,
+  isUsageLoading = false,
+  usageError = null,
 }) {
   const textareaRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -73,16 +77,27 @@ export default function ChatInput({
     }
   }, [])
 
+  const isQuotaExhausted = Boolean(
+    usage && typeof usage.remaining === 'number' && usage.remaining <= 0
+  )
+
+  const isSendDisabled =
+    (!input.trim() && !activeImage) || isGenerating || isUploading || isQuotaExhausted
+
+  const handleSendAction = () => {
+    if (isSendDisabled) return
+    if (isListening) {
+      stopListening()
+    }
+    if (typeof onSend === 'function') {
+      onSend()
+    }
+  }
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if ((input.trim() || activeImage) && !isGenerating && !isUploading) {
-        // If listening, stop listening before sending
-        if (isListening) {
-          stopListening()
-        }
-        onSend()
-      }
+      handleSendAction()
     }
   }
 
@@ -245,8 +260,6 @@ export default function ChatInput({
       startListening()
     }
   }
-
-  const isSendDisabled = (!input.trim() && !activeImage) || isGenerating || isUploading
 
   return (
     <div className="w-full bg-gradient-to-t from-[#131314] via-[#131314]/95 to-transparent pt-2 pb-4 px-3 sm:px-6">
@@ -435,6 +448,15 @@ export default function ChatInput({
           </div>
         )}
 
+        {/* Real-time Server-Authoritative Daily AI Usage & Credits Indicator */}
+        <div className="mb-1.5 px-2">
+          <UsageIndicator
+            usage={usage}
+            isLoading={isUsageLoading}
+            error={usageError}
+          />
+        </div>
+
         {/* Main Gemini Capsule Input Box */}
         <div
           className={`relative rounded-[28px] sm:rounded-[32px] bg-[#1e1f20] hover:bg-[#212224] focus-within:bg-[#282a2c] border transition-all duration-200 shadow-xl ${
@@ -515,8 +537,11 @@ export default function ChatInput({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              disabled={isQuotaExhausted}
               placeholder={
-                isListening
+                isQuotaExhausted
+                  ? 'Daily AI limit reached. Your limit resets at midnight.'
+                  : isListening
                   ? 'Listening to speech...'
                   : activeImage
                   ? 'Ask something about this image...'
@@ -526,7 +551,7 @@ export default function ChatInput({
                   ? 'Search the web or ask Bujju AI...'
                   : 'Ask Bujju AI...'
               }
-              className="flex-1 bg-transparent px-2.5 py-2 sm:py-2.5 text-[15px] sm:text-base text-[#e3e3e3] placeholder-[#8e918f] outline-none resize-none max-h-40 leading-relaxed"
+              className="flex-1 bg-transparent px-2.5 py-2 sm:py-2.5 text-[15px] sm:text-base text-[#e3e3e3] placeholder-[#8e918f] outline-none resize-none max-h-40 leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed"
             />
 
             {/* Send & Settings Controls */}
@@ -608,15 +633,25 @@ export default function ChatInput({
               {/* Gemini Circular Send Button */}
               <button
                 type="button"
-                onClick={onSend}
+                onClick={handleSendAction}
                 disabled={isSendDisabled}
-                className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full flex items-center justify-center transition-all duration-150 ${
+                className={`h-9 w-9 sm:h-10 sm:w-10 min-h-[36px] min-w-[36px] rounded-full flex items-center justify-center transition-all duration-150 ${
                   isSendDisabled
                     ? 'bg-[#282a2c] text-[#5e6062] cursor-not-allowed'
                     : 'bg-white text-black hover:bg-neutral-200 shadow-md hover:scale-105 active:scale-95 cursor-pointer'
                 }`}
-                title="Send message"
-                aria-label="Send message"
+                title={
+                  isQuotaExhausted
+                    ? 'Daily AI limit reached'
+                    : isSendDisabled
+                    ? 'Type a message to send'
+                    : 'Send message'
+                }
+                aria-label={
+                  isQuotaExhausted
+                    ? 'Daily AI limit reached'
+                    : 'Send message'
+                }
               >
                 <ArrowUp className="h-5 w-5 stroke-[2.5]" />
               </button>

@@ -13,6 +13,7 @@ export default function Sidebar({
   onLogout,
   onOpenMemory,
   memoriesCount = 0,
+  isLoadingConversations = false,
 }) {
   const displayName =
     user?.user_metadata?.name ||
@@ -76,7 +77,13 @@ export default function Sidebar({
             Recent
           </div>
 
-          {recentChats.length === 0 ? (
+          {isLoadingConversations ? (
+            <div className="px-3 py-2 space-y-2">
+              <div className="h-7 rounded-full bg-white/5 animate-pulse" />
+              <div className="h-7 rounded-full bg-white/5 animate-pulse w-[85%]" />
+              <div className="h-7 rounded-full bg-white/5 animate-pulse w-[70%]" />
+            </div>
+          ) : recentChats.length === 0 ? (
             <div className="px-3 py-6 text-center text-xs text-neutral-500">
               No recent conversations yet.
             </div>

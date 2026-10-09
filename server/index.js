@@ -28,6 +28,9 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') })
 const app = express()
 const PORT = process.env.PORT || 5000
 
+// Trust first proxy (required for Render reverse proxy and express-rate-limit)
+app.set('trust proxy', 1)
+
 // Security headers with Helmet
 app.use(
   helmet({
@@ -36,8 +39,11 @@ app.use(
 )
 
 // CORS configuration supporting FRONTEND_URL in production, localhost in development
+const cleanFrontendUrl = process.env.FRONTEND_URL?.replace(/\/$/, '')
+
 const allowedOrigins = [
-  process.env.FRONTEND_URL,
+  cleanFrontendUrl,
+  'https://bujju-ai-tgcq.vercel.app',
   'http://localhost:5173',
   'http://localhost:3000',
   'http://127.0.0.1:5173',
@@ -55,7 +61,7 @@ app.use(
       if (allowedOrigins.includes(origin)) {
         return callback(null, true)
       }
-      return callback(new Error('Blocked by CORS policy'))
+      return callback(null, false)
     },
     credentials: true,
   }),
@@ -102,11 +108,12 @@ const upload = multer({
 
 // Active Gemini models list with ultra-fast models prioritized and instant failover
 const GEMINI_CANDIDATE_MODELS = [
-  (process.env.GEMINI_MODEL || 'gemini-3.6-flash').replace(/^models\//, ''),
+  (process.env.GEMINI_MODEL || 'gemini-2.5-flash').replace(/^models\//, ''),
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash-lite',
-  'gemini-3.8-flash',
-  'gemini-3.5-flash',
 ].filter((m, i, arr) => m && arr.indexOf(m) === i)
 
 let activeGeminiModel = GEMINI_CANDIDATE_MODELS[0]
@@ -153,11 +160,142 @@ function getScopedSupabase(token) {
   })
 }
 
+// Server-Authoritative Daily AI Message Limit (configurable via DAILY_MESSAGE_LIMIT env var)
+const DAILY_MESSAGE_LIMIT = parseInt(process.env.DAILY_MESSAGE_LIMIT || '20', 10)
+
 // In-memory fallback store with user isolation for offline/mock development
 const localStore = {
   conversations: [],
   messages: [],
   files: [],
+  usage: {}, // { [userId]: { date: 'YYYY-MM-DD', count: N } }
+}
+
+// Reset time calculation helper (midnight UTC)
+function getUsageResetTime() {
+  const reset = new Date()
+  reset.setUTCHours(24, 0, 0, 0)
+  return reset.toISOString()
+}
+
+// Today's date string helper in UTC ('YYYY-MM-DD')
+function getTodayDateString() {
+  return new Date().toISOString().split('T')[0]
+}
+
+/**
+ * Retrieve verified server-side daily usage quota for a user.
+ * Tries Supabase user_usage table first, falling back to localStore if table is not migrated yet.
+ */
+async function getUserUsage(userId, scopedClient = null) {
+  const today = getTodayDateString()
+  const resetAt = getUsageResetTime()
+  const limit = DAILY_MESSAGE_LIMIT
+
+  let count = 0
+  let fetchedFromDb = false
+
+  if (scopedClient && isSupabaseConfigured) {
+    try {
+      const { data, error } = await scopedClient
+        .from('user_usage')
+        .select('message_count')
+        .eq('user_id', userId)
+        .eq('usage_date', today)
+        .maybeSingle()
+
+      if (!error && data) {
+        count = Number(data.message_count) || 0
+        fetchedFromDb = true
+      } else if (!error && !data) {
+        count = 0
+        fetchedFromDb = true
+      }
+    } catch {
+      // user_usage table not migrated yet; gracefully fall back to localStore
+    }
+  }
+
+  if (!fetchedFromDb) {
+    const userLocal = localStore.usage[userId]
+    if (userLocal && userLocal.date === today) {
+      count = Number(userLocal.count) || 0
+    } else {
+      count = 0
+    }
+  }
+
+  const remaining = Math.max(0, limit - count)
+  return {
+    used: count,
+    limit,
+    remaining,
+    resetAt,
+  }
+}
+
+/**
+ * Increment daily usage count for a user upon successful AI generation.
+ * Updates localStore cache and upserts into Supabase user_usage table if available.
+ */
+async function incrementUserUsage(userId, scopedClient = null) {
+  const today = getTodayDateString()
+  const resetAt = getUsageResetTime()
+  const limit = DAILY_MESSAGE_LIMIT
+
+  let newCount = 1
+
+  // 1. Update in-memory / localStore cache
+  const userLocal = localStore.usage[userId]
+  if (userLocal && userLocal.date === today) {
+    userLocal.count = (Number(userLocal.count) || 0) + 1
+    newCount = userLocal.count
+  } else {
+    localStore.usage[userId] = { date: today, count: 1 }
+    newCount = 1
+  }
+
+  // 2. Upsert into Supabase user_usage table
+  if (scopedClient && isSupabaseConfigured) {
+    try {
+      const { data: existing } = await scopedClient
+        .from('user_usage')
+        .select('message_count')
+        .eq('user_id', userId)
+        .eq('usage_date', today)
+        .maybeSingle()
+
+      if (existing) {
+        const updatedCount = (Number(existing.message_count) || 0) + 1
+        await scopedClient
+          .from('user_usage')
+          .update({ message_count: updatedCount, updated_at: new Date().toISOString() })
+          .eq('user_id', userId)
+          .eq('usage_date', today)
+        newCount = updatedCount
+      } else {
+        await scopedClient
+          .from('user_usage')
+          .insert({
+            user_id: userId,
+            usage_date: today,
+            message_count: 1,
+            updated_at: new Date().toISOString(),
+          })
+        newCount = 1
+      }
+    } catch {
+      // Gracefully fall back to localStore count
+    }
+  }
+
+  const remaining = Math.max(0, limit - newCount)
+  return {
+    used: newCount,
+    limit,
+    remaining,
+    resetAt,
+  }
 }
 
 // Helper: UUID format verification
@@ -248,6 +386,22 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
   })
+})
+
+// GET /api/usage - Fetch verified server-side daily usage quota for authenticated user
+app.get('/api/usage', async (req, res) => {
+  try {
+    const { user, scopedClient } = await getAuthenticatedUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized. Please sign in to view usage.' })
+    }
+
+    const usage = await getUserUsage(user.id, scopedClient)
+    return res.status(200).json(usage)
+  } catch (err) {
+    console.error('[Bujju AI Backend] Usage fetch error:', err.message)
+    return res.status(500).json({ error: 'Failed to retrieve usage data.' })
+  }
 })
 
 // ----------------------------------------------------
@@ -446,9 +600,19 @@ app.delete('/api/files/:id', async (req, res) => {
 // POST /api/search - Authenticated Web Search query endpoint
 app.post('/api/search', async (req, res) => {
   try {
-    const { user } = await getAuthenticatedUser(req)
+    const { user, scopedClient } = await getAuthenticatedUser(req)
     if (!user) {
       return res.status(401).json({ error: 'Unauthorized. Please sign in to use web search.' })
+    }
+
+    // Check server-authoritative daily message quota
+    const currentUsage = await getUserUsage(user.id, scopedClient)
+    if (currentUsage.remaining <= 0) {
+      return res.status(429).json({
+        error: 'Daily AI limit reached. Your limit resets at midnight UTC.',
+        limitReached: true,
+        usage: currentUsage,
+      })
     }
 
     const rawQuery = (req.body?.query || req.body?.message || '').trim()
@@ -490,11 +654,15 @@ app.post('/api/search', async (req, res) => {
       replyText = fallbackRes?.text || ''
     }
 
+    // Increment verified server-side daily message quota
+    const updatedUsage = await incrementUserUsage(user.id, scopedClient)
+
     return res.status(200).json({
       success: true,
       query: rawQuery,
       answer: replyText,
       sources,
+      usage: updatedUsage,
     })
   } catch (err) {
     console.error('[Bujju AI Backend] Search endpoint error:', err.message)
@@ -526,6 +694,16 @@ app.post('/api/images/analyze', (req, res) => {
       if (!user) {
         return res.status(401).json({
           error: 'Unauthorized. Please sign in to analyze images.',
+        })
+      }
+
+      // Check server-authoritative daily message quota
+      const currentUsage = await getUserUsage(user.id, scopedClient)
+      if (currentUsage.remaining <= 0) {
+        return res.status(429).json({
+          error: 'Daily AI limit reached. Your limit resets at midnight UTC.',
+          limitReached: true,
+          usage: currentUsage,
         })
       }
 
@@ -787,12 +965,16 @@ Analyze the user's uploaded image and answer their question accurately.
         localConv.updated_at = aiNow
       }
 
+      // Increment verified server-side daily message quota
+      const updatedUsage = await incrementUserUsage(user.id, scopedClient)
+
       return res.status(200).json({
         success: true,
         reply: replyText,
         conversation_id: conversationId,
         title: currentTitle,
         image_name: originalname,
+        usage: updatedUsage,
       })
     } catch (uploadErr) {
       console.error('[Bujju AI Backend] Image analysis error:', uploadErr)
@@ -1126,6 +1308,16 @@ app.post('/api/chat', async (req, res) => {
     if (message.length > 20000) {
       return res.status(400).json({
         error: 'Message is too long. Maximum allowed length is 20,000 characters.',
+      })
+    }
+
+    // Check server-authoritative daily message quota
+    const currentUsage = await getUserUsage(user.id, scopedClient)
+    if (currentUsage.remaining <= 0) {
+      return res.status(429).json({
+        error: 'Daily AI limit reached. Your limit resets at midnight UTC.',
+        limitReached: true,
+        usage: currentUsage,
       })
     }
 
@@ -1565,6 +1757,7 @@ Web Search is active. Provide current, accurate, and comprehensive information. 
       res.setHeader('Content-Type', 'text/event-stream')
       res.setHeader('Cache-Control', 'no-cache, no-transform')
       res.setHeader('Connection', 'keep-alive')
+      res.setHeader('X-Accel-Buffering', 'no')
       res.flushHeaders?.()
 
       let replyText = ''
@@ -1576,6 +1769,7 @@ Web Search is active. Provide current, accurate, and comprehensive information. 
           if (chunkText) {
             replyText += chunkText
             res.write(`data: ${JSON.stringify({ type: 'chunk', text: chunkText })}\n\n`)
+            if (typeof res.flush === 'function') res.flush()
           }
           const chunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks
           if (Array.isArray(chunks)) {
@@ -1587,10 +1781,15 @@ Web Search is active. Provide current, accurate, and comprehensive information. 
           }
         }
 
-        const aiNow = new Date().toISOString()
-        const aiMsgId = randomUUID()
-        await persistAiMessage(replyText, aiMsgId, aiNow)
+        // Calculate updated usage immediately so client receives instant feedback
+        const updatedUsage = {
+          used: (currentUsage?.used || 0) + 1,
+          limit: currentUsage?.limit || DAILY_MESSAGE_LIMIT,
+          remaining: Math.max(0, (currentUsage?.remaining ?? DAILY_MESSAGE_LIMIT) - 1),
+          resetAt: currentUsage?.resetAt || getUsageResetTime(),
+        }
 
+        // Send final done event and close SSE stream immediately
         res.write(`data: ${JSON.stringify({
           type: 'done',
           reply: replyText,
@@ -1599,11 +1798,25 @@ Web Search is active. Provide current, accurate, and comprehensive information. 
           file_id: attachedFile?.id || null,
           file_name: attachedFile?.filename || null,
           sources: sources.length > 0 ? sources : undefined,
+          usage: updatedUsage,
         })}\n\n`)
-        return res.end()
+        if (typeof res.flush === 'function') res.flush()
+        res.end()
+
+        // Asynchronously persist AI message & increment usage in background without blocking client stream
+        const aiNow = new Date().toISOString()
+        const aiMsgId = randomUUID()
+        Promise.allSettled([
+          incrementUserUsage(user.id, scopedClient),
+          persistAiMessage(replyText, aiMsgId, aiNow),
+        ]).catch((bgErr) => {
+          console.warn('[Bujju AI Backend] Background persistence notice:', bgErr.message)
+        })
+        return
       } catch (streamErr) {
         console.error('[Bujju AI Backend] Streaming error:', streamErr)
-        res.write(`data: ${JSON.stringify({ type: 'error', error: streamErr.message })}\n\n`)
+        res.write(`data: ${JSON.stringify({ type: 'error', error: streamErr.message || 'AI streaming interrupted.' })}\n\n`)
+        if (typeof res.flush === 'function') res.flush()
         return res.end()
       }
     }
@@ -1620,6 +1833,9 @@ Web Search is active. Provide current, accurate, and comprehensive information. 
     const aiMsgId = randomUUID()
     await persistAiMessage(replyText, aiMsgId, aiNow)
 
+    // Increment verified server-side daily message quota
+    const updatedUsage = await incrementUserUsage(user.id, scopedClient)
+
     let sources = []
     const chunks = responseResult?.candidates?.[0]?.groundingMetadata?.groundingChunks
     if (Array.isArray(chunks)) {
@@ -1635,6 +1851,7 @@ Web Search is active. Provide current, accurate, and comprehensive information. 
       file_id: attachedFile?.id || null,
       file_name: attachedFile?.filename || null,
       sources: sources.length > 0 ? sources : undefined,
+      usage: updatedUsage,
     })
   } catch (error) {
     console.error('[Bujju AI Backend] /api/chat error:', error)

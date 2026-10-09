@@ -85,7 +85,10 @@ export default function ChatArea({
   onRegenerate,
   onSelectSuggestion,
   isLoading,
+  isSendingMessage,
   isChatLoading = false,
+  isLoadingMessages = false,
+  activeChatId = null,
   activeFile,
   onUploadFile,
   onRemoveFile,
@@ -110,7 +113,12 @@ export default function ChatArea({
   user,
   onOpenMemory,
   memoriesCount = 0,
+  usage = null,
+  isUsageLoading = false,
+  usageError = null,
 }) {
+  const isAiGenerating = isSendingMessage !== undefined ? isSendingMessage : isLoading
+  const isMessagesLoading = (isLoadingMessages || isChatLoading) && Boolean(activeChatId)
   const messagesEndRef = useRef(null)
 
   const scrollToBottom = () => {
@@ -144,12 +152,12 @@ export default function ChatArea({
             <ChevronDown className="h-3 w-3 text-neutral-400" />
             <span
               className={`text-[9px] px-1.5 py-0.2 rounded-full font-medium ${
-                isLoading
+                isAiGenerating
                   ? 'bg-amber-500/15 text-amber-400 animate-pulse'
                   : 'bg-emerald-500/15 text-emerald-400'
               }`}
             >
-              {isLoading ? 'Thinking...' : 'Active'}
+              {isAiGenerating ? 'Thinking...' : 'Active'}
             </span>
           </div>
 
@@ -224,7 +232,7 @@ export default function ChatArea({
 
       {/* Main Chat Body (Scrollable) */}
       <div className="flex-1 overflow-y-auto flex flex-col">
-        {isChatLoading ? (
+        {isMessagesLoading ? (
           <div className="flex-1 flex items-center justify-center text-neutral-400">
             <div className="flex flex-col items-center gap-2.5">
               <div className="h-6 w-6 rounded-full border-2 border-[#4285f4] border-t-transparent animate-spin" />
@@ -246,7 +254,7 @@ export default function ChatArea({
             ))}
 
             {/* Gemini Loading / Typing Indicator */}
-            {isLoading && !messages.some((m) => m.isStreaming) && (
+            {isAiGenerating && !messages.some((m) => m.isStreaming) && (
               <GeminiLoadingIndicator />
             )}
 
@@ -278,7 +286,7 @@ export default function ChatArea({
         input={input}
         setInput={setInput}
         onSend={onSend}
-        isGenerating={isLoading}
+        isGenerating={isAiGenerating}
         activeFile={activeFile}
         onUploadFile={onUploadFile}
         onRemoveFile={onRemoveFile}
@@ -297,6 +305,9 @@ export default function ChatArea({
         setVoiceRate={setVoiceRate}
         voiceLang={voiceLang}
         setVoiceLang={setVoiceLang}
+        usage={usage}
+        isUsageLoading={isUsageLoading}
+        usageError={usageError}
       />
     </div>
   )

@@ -278,7 +278,7 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
             key={`code-${bIdx}`}
             language={block.language}
             code={block.code}
-            isIncomplete={block.isIncomplete}
+            isIncomplete={isStreaming && block.isIncomplete}
           />
         )
       }
