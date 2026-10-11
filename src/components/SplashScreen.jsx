@@ -63,7 +63,18 @@ export default function SplashScreen({ onFinish }) {
       onFinish?.()
     }, 1850)
 
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+        try {
+          sessionStorage.setItem(SPLASH_SESSION_KEY, 'true')
+        } catch { }
+        onFinish?.()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+
     return () => {
+      window.removeEventListener('keydown', handleKeyDown)
       clearTimeout(t1)
       clearTimeout(t2)
       clearTimeout(t3)
@@ -74,9 +85,17 @@ export default function SplashScreen({ onFinish }) {
     }
   }, [onFinish, isReducedMotion])
 
+  const handleSkipClick = () => {
+    try {
+      sessionStorage.setItem(SPLASH_SESSION_KEY, 'true')
+    } catch { }
+    onFinish?.()
+  }
+
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-[#131314] select-none transition-opacity duration-300 ease-out ${isFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
+      onClick={handleSkipClick}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-[#131314] select-none cursor-pointer transition-opacity duration-300 ease-out ${isFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
         }`}
       style={{
         paddingTop: 'env(safe-area-inset-top, 0px)',

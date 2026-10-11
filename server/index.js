@@ -106,17 +106,73 @@ const upload = multer({
   },
 })
 
-// Active Gemini models list with ultra-fast models prioritized and instant failover
+// Model normalizer ensuring model string is clean and formatted as "gemini-3.8-flash"
+// rather than "models/gemini-3.8-flash" or "models/models/gemini-3.8-flash"
+function normalizeGeminiModel(modelName) {
+  if (!modelName || typeof modelName !== 'string') return 'gemini-3.8-flash'
+  const cleaned = modelName.trim().replace(/^(models\/)+/i, '')
+  return cleaned || 'gemini-3.8-flash'
+}
+
+// Helper to determine if an error should trigger switching to a fallback model
+function shouldFailoverModel(err) {
+  if (!err) return false
+  const status = err.status || err.code || (err.error && err.error.code)
+  const msg = (err.message || '').toLowerCase()
+  const errorObjMsg = (err.error?.message || '').toLowerCase()
+
+  const isQuota =
+    status === 429 ||
+    msg.includes('429') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('quota')
+
+  const isUnavailable =
+    status === 503 ||
+    msg.includes('503') ||
+    msg.includes('unavailable') ||
+    msg.includes('high demand') ||
+    msg.includes('overloaded')
+
+  const isNotFound =
+    status === 404 ||
+    msg.includes('404') ||
+    msg.includes('not_found') ||
+    msg.includes('not found') ||
+    msg.includes('no longer available') ||
+    errorObjMsg.includes('not found') ||
+    errorObjMsg.includes('no longer available')
+
+  return isQuota || isUnavailable || isNotFound
+}
+
+// Confirmed active supported models in order of priority:
+// Primary: gemini-3.8-flash (or process.env.GEMINI_MODEL if specified)
+// Reliable confirmed fallbacks: gemini-3.6-flash, gemini-3.5-flash-lite, gemini-flash-latest
+const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash'
+const configuredModel = normalizeGeminiModel(process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL)
+
 const GEMINI_CANDIDATE_MODELS = [
-  (process.env.GEMINI_MODEL || 'gemini-2.5-flash').replace(/^models\//, ''),
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
+  configuredModel,
+  'gemini-3.8-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash-lite',
+  'gemini-flash-latest',
 ].filter((m, i, arr) => m && arr.indexOf(m) === i)
 
 let activeGeminiModel = GEMINI_CANDIDATE_MODELS[0]
+
+function getNextCandidateModel(currentModel) {
+  const normCurrent = normalizeGeminiModel(currentModel)
+  const currentIdx = GEMINI_CANDIDATE_MODELS.indexOf(normCurrent)
+  if (currentIdx !== -1 && currentIdx < GEMINI_CANDIDATE_MODELS.length - 1) {
+    return GEMINI_CANDIDATE_MODELS[currentIdx + 1]
+  }
+  if (GEMINI_CANDIDATE_MODELS[0] !== normCurrent) {
+    return GEMINI_CANDIDATE_MODELS[0]
+  }
+  return null
+}
 
 // Gemini system instruction to produce the best, Google Gemini-caliber output
 const GEMINI_SYSTEM_INSTRUCTION = `You are Bujju AI, a world-class AI assistant powered by Google Gemini technology.
@@ -632,9 +688,10 @@ app.post('/api/search', async (req, res) => {
     let replyText = ''
     let sources = []
 
+    let searchModel = normalizeGeminiModel(activeGeminiModel)
     try {
       const response = await ai.models.generateContent({
-        model: activeGeminiModel,
+        model: searchModel,
         contents: `You are Bujju AI with web search capabilities. Answer the following search query with clear, accurate, and up-to-date facts:\n\n${rawQuery}`,
         config: { tools: [{ googleSearch: {} }] },
       })
@@ -647,11 +704,26 @@ app.post('/api/search', async (req, res) => {
       }
     } catch {
       // Fallback without search tool if search tool limit reached
-      const fallbackRes = await ai.models.generateContent({
-        model: activeGeminiModel,
-        contents: `You are Bujju AI. Answer the following search query clearly and factually:\n\n${rawQuery}`,
-      })
-      replyText = fallbackRes?.text || ''
+      try {
+        const fallbackRes = await ai.models.generateContent({
+          model: searchModel,
+          contents: `You are Bujju AI. Answer the following search query clearly and factually:\n\n${rawQuery}`,
+        })
+        replyText = fallbackRes?.text || ''
+      } catch (fallbackErr) {
+        const nextModel = getNextCandidateModel(searchModel)
+        if (shouldFailoverModel(fallbackErr) && nextModel && nextModel !== searchModel) {
+          console.warn(`[Bujju AI Backend] Search model ${searchModel} unavailable, switching to ${nextModel}...`)
+          const secondRes = await ai.models.generateContent({
+            model: nextModel,
+            contents: `You are Bujju AI. Answer the following search query clearly and factually:\n\n${rawQuery}`,
+          })
+          replyText = secondRes?.text || ''
+          activeGeminiModel = nextModel
+        } else {
+          throw fallbackErr
+        }
+      }
     }
 
     // Increment verified server-side daily message quota
@@ -844,7 +916,7 @@ app.post('/api/images/analyze', (req, res) => {
 
       // 8. Call Gemini Vision API
       const ai = new GoogleGenAI({ apiKey })
-      let currentModel = activeGeminiModel
+      let currentModel = normalizeGeminiModel(activeGeminiModel)
 
       const systemInstruction = `You are Bujju AI, a helpful, intelligent AI assistant.
 Analyze the user's uploaded image and answer their question accurately.
@@ -873,36 +945,19 @@ Analyze the user's uploaded image and answer their question accurately.
       ]
 
       let response
-      for (let attempt = 1; attempt <= 4; attempt++) {
+      for (let attempt = 1; attempt <= GEMINI_CANDIDATE_MODELS.length + 1; attempt++) {
         try {
           response = await ai.models.generateContent({
             model: currentModel,
             contents,
           })
+          activeGeminiModel = currentModel
           break
         } catch (err) {
-          const isQuota =
-            err.status === 429 ||
-            err.message?.includes('RESOURCE_EXHAUSTED') ||
-            err.message?.includes('Quota exceeded') ||
-            err.message?.toLowerCase().includes('quota')
-
-          const isHighDemand =
-            err.status === 503 ||
-            err.message?.includes('503') ||
-            err.message?.includes('UNAVAILABLE') ||
-            err.message?.toLowerCase().includes('high demand') ||
-            err.message?.toLowerCase().includes('overloaded')
-
-          const currentIdx = GEMINI_CANDIDATE_MODELS.indexOf(currentModel)
-          const nextModel =
-            currentIdx !== -1 && currentIdx < GEMINI_CANDIDATE_MODELS.length - 1
-              ? GEMINI_CANDIDATE_MODELS[currentIdx + 1]
-              : (currentIdx !== 0 ? GEMINI_CANDIDATE_MODELS[0] : null)
-
-          if ((isQuota || isHighDemand) && nextModel && nextModel !== currentModel) {
-            console.log(
-              `[Bujju AI Backend] Vision model ${currentModel} busy/exhausted, immediately switching to ${nextModel}...`,
+          const nextModel = getNextCandidateModel(currentModel)
+          if (shouldFailoverModel(err) && nextModel && nextModel !== currentModel) {
+            console.warn(
+              `[Bujju AI Backend] Vision model ${currentModel} error (status: ${err?.status || 'failover'}), safely switching to ${nextModel}...`,
             )
             activeGeminiModel = nextModel
             currentModel = nextModel
@@ -977,9 +1032,13 @@ Analyze the user's uploaded image and answer their question accurately.
         usage: updatedUsage,
       })
     } catch (uploadErr) {
-      console.error('[Bujju AI Backend] Image analysis error:', uploadErr)
-      return res.status(500).json({
-        error: uploadErr.message || 'An unexpected error occurred during image analysis.',
+      console.error('[Bujju AI Backend] Image analysis error status:', uploadErr?.status || 500)
+      const cleanMessage =
+        uploadErr?.status === 404
+          ? 'Selected AI vision model is currently unavailable. Please try again.'
+          : uploadErr?.message || 'An unexpected error occurred during image analysis.'
+      return res.status(uploadErr?.status || 500).json({
+        error: cleanMessage,
       })
     }
   })
@@ -1595,12 +1654,12 @@ Web Search is active. Provide current, accurate, and comprehensive information. 
       contentsPayload = promptContents
     }
 
-    let currentModel = activeGeminiModel
+    let currentModel = normalizeGeminiModel(activeGeminiModel)
     let streamResult = null
     let responseResult = null
     let useGoogleSearch = isWebSearch
 
-    for (let attempt = 1; attempt <= 4; attempt++) {
+    for (let attempt = 1; attempt <= GEMINI_CANDIDATE_MODELS.length + 1; attempt++) {
       try {
         const generateOptions = {
           model: currentModel,
@@ -1646,28 +1705,10 @@ Web Search is active. Provide current, accurate, and comprehensive information. 
           }
         }
 
-        const isQuota =
-          activeErr.status === 429 ||
-          activeErr.message?.includes('RESOURCE_EXHAUSTED') ||
-          activeErr.message?.includes('Quota exceeded') ||
-          activeErr.message?.toLowerCase().includes('quota')
-
-        const isHighDemand =
-          activeErr.status === 503 ||
-          activeErr.message?.includes('503') ||
-          activeErr.message?.includes('UNAVAILABLE') ||
-          activeErr.message?.toLowerCase().includes('high demand') ||
-          activeErr.message?.toLowerCase().includes('overloaded')
-
-        const currentIdx = GEMINI_CANDIDATE_MODELS.indexOf(currentModel)
-        const nextModel =
-          currentIdx !== -1 && currentIdx < GEMINI_CANDIDATE_MODELS.length - 1
-            ? GEMINI_CANDIDATE_MODELS[currentIdx + 1]
-            : (currentIdx !== 0 ? GEMINI_CANDIDATE_MODELS[0] : null)
-
-        if ((isQuota || isHighDemand) && nextModel && nextModel !== currentModel) {
-          console.log(
-            `[Bujju AI Backend] Model ${currentModel} busy or exhausted, immediately switching to ${nextModel}...`,
+        const nextModel = getNextCandidateModel(currentModel)
+        if (shouldFailoverModel(activeErr) && nextModel && nextModel !== currentModel) {
+          console.warn(
+            `[Bujju AI Backend] Chat model ${currentModel} error (status: ${activeErr?.status || 'failover'}), safely switching to ${nextModel}...`,
           )
           activeGeminiModel = nextModel
           currentModel = nextModel
