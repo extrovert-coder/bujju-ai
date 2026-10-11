@@ -6,7 +6,7 @@ Bujju AI is an enterprise-ready, production-grade conversational AI assistant po
 
 ## ✨ Features
 
-- **Conversational Intelligence:** Powered by Google Gemini (`gemini-2.5-flash`), with contextual memory and multi-turn chat dialogs.
+- **Conversational Intelligence:** Powered by Google Gemini (`gemini-3.8-flash`), with contextual memory and multi-turn chat dialogs.
 - **Supabase Authentication:** Secure email/password signup and login, session persistence, and Row-Level Security (RLS) policies.
 - **Persistent Chat History:** Seamless conversation management in the sidebar (create, view, switch, and delete chats) saved to PostgreSQL.
 - **PDF Document Analysis:** Upload PDF files up to 10 MB with automated text extraction (`pdf-parse`) and conversational Q&A.

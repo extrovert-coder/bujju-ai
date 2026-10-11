@@ -106,12 +106,29 @@ const upload = multer({
   },
 })
 
-// Model normalizer ensuring model string is clean and formatted as "gemini-3.8-flash"
-// rather than "models/gemini-3.8-flash" or "models/models/gemini-3.8-flash"
+// Confirmed active supported models in order of priority:
+// Primary: gemini-3.8-flash (or process.env.GEMINI_MODEL if specified and supported)
+// Reliable confirmed fallbacks: gemini-3.6-flash, gemini-3.5-flash-lite, gemini-flash-latest
+const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash'
+
+const DEPRECATED_MODELS = new Set([
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-exp',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b',
+  'gemini-1.5-pro',
+])
+
+// Model normalizer ensuring model string is clean, properly formatted,
+// and automatically replaces deprecated models (such as gemini-2.5-flash) with DEFAULT_GEMINI_MODEL
 function normalizeGeminiModel(modelName) {
-  if (!modelName || typeof modelName !== 'string') return 'gemini-3.8-flash'
+  if (!modelName || typeof modelName !== 'string') return DEFAULT_GEMINI_MODEL
   const cleaned = modelName.trim().replace(/^(models\/)+/i, '')
-  return cleaned || 'gemini-3.8-flash'
+  if (DEPRECATED_MODELS.has(cleaned)) {
+    return DEFAULT_GEMINI_MODEL
+  }
+  return cleaned || DEFAULT_GEMINI_MODEL
 }
 
 // Helper to determine if an error should trigger switching to a fallback model
@@ -146,10 +163,6 @@ function shouldFailoverModel(err) {
   return isQuota || isUnavailable || isNotFound
 }
 
-// Confirmed active supported models in order of priority:
-// Primary: gemini-3.8-flash (or process.env.GEMINI_MODEL if specified)
-// Reliable confirmed fallbacks: gemini-3.6-flash, gemini-3.5-flash-lite, gemini-flash-latest
-const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash'
 const configuredModel = normalizeGeminiModel(process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL)
 
 const GEMINI_CANDIDATE_MODELS = [
