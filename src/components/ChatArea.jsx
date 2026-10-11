@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
-import { PanelLeft, Plus, Trash2, Volume2, Square, Zap, ChevronDown, Brain } from 'lucide-react'
+import { PanelLeft, Plus, Trash2, Volume2, Square, Zap, ChevronDown, Brain, Code2, Bell } from 'lucide-react'
 import ChatMessage from './ChatMessage'
 import WelcomeScreen from './WelcomeScreen'
 import ChatInput from './ChatInput'
@@ -113,9 +113,12 @@ export default function ChatArea({
   user,
   onOpenMemory,
   memoriesCount = 0,
+  onOpenReminders,
+  pendingRemindersCount = 0,
   usage = null,
   isUsageLoading = false,
   usageError = null,
+  onSelectView,
 }) {
   const isAiGenerating = isSendingMessage !== undefined ? isSendingMessage : isLoading
   const isMessagesLoading = (isLoadingMessages || isChatLoading) && Boolean(activeChatId)
@@ -132,7 +135,7 @@ export default function ChatArea({
   return (
     <div className="flex-1 flex flex-col h-full bg-[#131314] text-neutral-100 overflow-hidden relative">
       {/* Top Navbar */}
-      <header className="h-14 shrink-0 flex items-center justify-between px-3 sm:px-6 border-b border-white/5 bg-[#131314]/90 backdrop-blur-md z-10">
+      <header className="h-14 shrink-0 flex items-center justify-between px-2 sm:px-6 border-b border-white/5 bg-[#131314]/90 backdrop-blur-md z-10 gap-2">
         <div className="flex items-center gap-3">
           {/* Mobile Sidebar Toggle */}
           <button
@@ -145,10 +148,10 @@ export default function ChatArea({
           </button>
 
           {/* Gemini Model Status Pill */}
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] hover:bg-[#282a2c] text-xs text-[#e3e3e3] border border-white/5 transition-colors cursor-pointer select-none">
-            <BujjuIcon size={20} glow={false} />
-            <span className="font-semibold text-white tracking-tight">Bujju AI</span>
-            <span className="text-[11px] text-[#8e918f] font-normal">Gemini 3.6 Flash</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-[#1e1f20] hover:bg-[#282a2c] text-xs text-[#e3e3e3] border border-white/5 transition-colors cursor-pointer select-none max-w-[160px] sm:max-w-none">
+            <BujjuIcon size={18} glow={false} />
+            <span className="font-semibold text-white tracking-tight text-xs hidden xs:inline sm:inline">Bujju AI</span>
+            <span className="text-[10px] sm:text-[11px] text-[#8e918f] font-normal hidden sm:inline">Gemini 3.6 Flash</span>
             <ChevronDown className="h-3 w-3 text-neutral-400" />
             <span
               className={`text-[9px] px-1.5 py-0.2 rounded-full font-medium ${
@@ -171,19 +174,50 @@ export default function ChatArea({
 
         {/* Quick Actions */}
         <div className="flex items-center gap-1.5">
+          {/* Coding Workspace Switcher Button */}
+          {onSelectView && (
+            <button
+              type="button"
+              onClick={() => onSelectView('code')}
+              className="flex items-center gap-1.5 p-2 sm:px-3 sm:py-1.5 rounded-full text-xs font-medium text-[#e3e3e3] bg-[#1e1f20] hover:bg-[#282a2c] hover:text-white border border-white/5 transition-all cursor-pointer shadow-xs"
+              title="Open AI Coding Workspace"
+            >
+              <Code2 className="h-3.5 w-3.5 text-[#9b72cf] shrink-0" />
+              <span className="hidden md:inline">Coding Workspace</span>
+            </button>
+          )}
+
           {/* Continuous Self-Training Memory Button */}
           {onOpenMemory && (
             <button
               type="button"
               onClick={onOpenMemory}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-[#e3e3e3] bg-[#1e1f20] hover:bg-[#282a2c] border border-white/5 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 p-2 sm:px-3 sm:py-1.5 rounded-full text-xs font-medium text-[#e3e3e3] bg-[#1e1f20] hover:bg-[#282a2c] border border-white/5 transition-colors cursor-pointer"
               title="Bujju AI Continuous Memory & Self-Training"
             >
-              <Brain className="h-3.5 w-3.5 text-[#9b72cf]" />
-              <span className="hidden sm:inline">Memory</span>
+              <Brain className="h-3.5 w-3.5 text-[#9b72cf] shrink-0" />
+              <span className="hidden lg:inline">Memory</span>
               {memoriesCount > 0 && (
                 <span className="text-[10px] bg-[#9b72cf]/20 text-[#cbb2fe] px-1.5 py-0.2 rounded-full font-mono font-medium">
                   {memoriesCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* Reminders & Alerts Button */}
+          {onOpenReminders && (
+            <button
+              type="button"
+              onClick={onOpenReminders}
+              className="flex items-center gap-1.5 p-2 sm:px-3 sm:py-1.5 rounded-full text-xs font-medium text-[#e3e3e3] bg-[#1e1f20] hover:bg-[#282a2c] border border-white/5 transition-colors cursor-pointer"
+              title="Reminders & Scheduled Alerts"
+            >
+              <Bell className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+              <span className="hidden lg:inline">Reminders</span>
+              {pendingRemindersCount > 0 && (
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 rounded-full font-mono font-medium">
+                  {pendingRemindersCount}
                 </span>
               )}
             </button>
@@ -205,10 +239,10 @@ export default function ChatArea({
           <button
             type="button"
             onClick={onNewChat}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-[#e3e3e3] bg-[#1e1f20] hover:bg-[#282a2c] border border-white/5 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 p-2 sm:px-3 sm:py-1.5 rounded-full text-xs font-medium text-[#e3e3e3] bg-[#1e1f20] hover:bg-[#282a2c] border border-white/5 transition-colors cursor-pointer"
             title="Start new chat"
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="h-3.5 w-3.5 shrink-0" />
             <span className="hidden sm:inline">New chat</span>
           </button>
 

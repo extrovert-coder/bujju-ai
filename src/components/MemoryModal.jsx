@@ -71,7 +71,7 @@ export default function MemoryModal({
       : memories.filter((m) => (m.category || 'fact').toLowerCase() === filter.toLowerCase())
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 select-none animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-3 md:p-6 select-none animate-fade-in">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/75 backdrop-blur-md transition-opacity"
@@ -80,7 +80,10 @@ export default function MemoryModal({
       />
 
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-2xl max-h-[90vh] bg-[#1e1f20] border border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-[#e3e3e3] z-10">
+      <div
+        className="relative w-full sm:max-w-2xl bg-[#1e1f20] border border-white/10 sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col overflow-hidden text-[#e3e3e3] z-10"
+        style={{ maxHeight: 'min(90dvh, 100dvh - env(safe-area-inset-bottom))' }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-[#131314]/80 backdrop-blur-md">
           <div className="flex items-center gap-3">

@@ -379,7 +379,7 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
     return (
       <div className="w-full py-2 px-3 sm:px-6 animate-fade-in">
         <div className="max-w-4xl mx-auto flex justify-end">
-          <div className="max-w-[88%] sm:max-w-[78%] rounded-3xl bg-[#282a2c] text-[#e3e3e3] px-5 py-3.5 shadow-sm text-sm sm:text-base leading-relaxed">
+          <div className="max-w-[88%] sm:max-w-[78%] rounded-3xl bg-[#282a2c] text-[#e3e3e3] px-5 py-3.5 shadow-sm text-sm sm:text-base leading-relaxed break-words">
             <div className="space-y-1.5">
               {message.text.split('\n').map((line, idx) => {
                 if (line.startsWith('[Image attached: ') && line.endsWith(']')) {
@@ -426,7 +426,7 @@ export default function ChatMessage({ message, onRegenerate, isSpeaking = false,
         </div>
 
         {/* Message Content */}
-        <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex-1 min-w-0 space-y-1 overflow-hidden">
           {/* Header */}
           <div className="flex items-center gap-2">
             <span

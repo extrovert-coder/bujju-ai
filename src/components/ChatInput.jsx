@@ -113,10 +113,11 @@ export default function ChatInput({
       return
     }
 
-    // Validate file extension (PDF only)
+    // Validate file extension (PDF, DOCX, TXT, CSV, JSON)
     const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
-    if (ext !== '.pdf') {
-      onUploadFile(null, 'Invalid file type. Only PDF files are supported.')
+    const allowed = ['.pdf', '.docx', '.txt', '.csv', '.json']
+    if (!allowed.includes(ext)) {
+      onUploadFile(null, 'Invalid file type. Supported formats are PDF, DOCX, TXT, CSV, and JSON.')
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
@@ -262,13 +263,16 @@ export default function ChatInput({
   }
 
   return (
-    <div className="w-full bg-gradient-to-t from-[#131314] via-[#131314]/95 to-transparent pt-2 pb-4 px-3 sm:px-6">
+    <div
+      className="w-full bg-gradient-to-t from-[#131314] via-[#131314]/95 to-transparent pt-2 px-3 sm:px-6"
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+    >
       <div className="max-w-3xl sm:max-w-4xl mx-auto">
-        {/* Hidden File Input (PDF only) */}
+        {/* Hidden File Input (PDF, DOCX, TXT, CSV, JSON) */}
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,application/pdf"
+          accept=".pdf,.docx,.txt,.csv,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/json"
           onChange={handleFileChange}
           className="hidden"
         />
@@ -406,31 +410,44 @@ export default function ChatInput({
           </div>
         )}
 
-        {/* Active Attached File Display (PDF) */}
-        {activeFile && (
-          <div className="mb-2.5 flex items-center justify-between gap-2 px-3.5 py-2 rounded-2xl bg-[#1e1f20] border border-neutral-700/50 text-xs text-neutral-200 shadow-md">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="h-7 w-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                <FileText className="h-4 w-4 text-emerald-400" />
-              </div>
-              <span className="font-medium truncate text-white">{activeFile.filename}</span>
-              {activeFile.file_size && (
-                <span className="text-[11px] text-[#8e918f] shrink-0">
-                  ({formatFileSize(activeFile.file_size)})
+        {/* Active Attached File Display (PDF, DOCX, TXT, CSV, JSON) */}
+        {activeFile && (() => {
+          const ext = (activeFile.filename || '').slice((activeFile.filename || '').lastIndexOf('.')).toLowerCase()
+          let badgeStyle = { label: 'FILE', bg: 'bg-neutral-500/15', text: 'text-neutral-300', border: 'border-neutral-500/30' }
+          if (ext === '.pdf') badgeStyle = { label: 'PDF', bg: 'bg-rose-500/15', text: 'text-rose-400', border: 'border-rose-500/30' }
+          else if (ext === '.docx') badgeStyle = { label: 'DOCX', bg: 'bg-blue-500/15', text: 'text-blue-400', border: 'border-blue-500/30' }
+          else if (ext === '.csv') badgeStyle = { label: 'CSV', bg: 'bg-emerald-500/15', text: 'text-emerald-400', border: 'border-emerald-500/30' }
+          else if (ext === '.json') badgeStyle = { label: 'JSON', bg: 'bg-amber-500/15', text: 'text-amber-400', border: 'border-amber-500/30' }
+          else if (ext === '.txt') badgeStyle = { label: 'TXT', bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-purple-500/30' }
+
+          return (
+            <div className="mb-2.5 flex items-center justify-between gap-2 px-3.5 py-2 rounded-2xl bg-[#1e1f20] border border-neutral-700/50 text-xs text-neutral-200 shadow-md">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className={`h-7 w-7 rounded-lg ${badgeStyle.bg} border ${badgeStyle.border} flex items-center justify-center shrink-0`}>
+                  <FileText className={`h-4 w-4 ${badgeStyle.text}`} />
+                </div>
+                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${badgeStyle.bg} ${badgeStyle.text} border ${badgeStyle.border} shrink-0`}>
+                  {badgeStyle.label}
                 </span>
-              )}
+                <span className="font-medium truncate text-white">{activeFile.filename}</span>
+                {activeFile.file_size && (
+                  <span className="text-[11px] text-[#8e918f] shrink-0">
+                    ({formatFileSize(activeFile.file_size)})
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={onRemoveFile}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-neutral-400 hover:text-rose-400 hover:bg-[#282a2c] transition-colors shrink-0 cursor-pointer"
+                title="Remove attached file"
+              >
+                <span className="text-[11px] font-medium hidden sm:inline">Remove</span>
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onRemoveFile}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-neutral-400 hover:text-rose-400 hover:bg-[#282a2c] transition-colors shrink-0 cursor-pointer"
-              title="Remove attached file"
-            >
-              <span className="text-[11px] font-medium hidden sm:inline">Remove</span>
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
+          )
+        })()}
 
         {/* Active Web Search Indicator Pill */}
         {isWebSearch && (
@@ -468,14 +485,14 @@ export default function ChatInput({
           <div className="flex items-end px-2 sm:px-3 py-1.5 sm:py-2">
             {/* Attachment & Feature Toolbar */}
             <div className="flex items-center shrink-0 gap-0.5 pb-1">
-              {/* Paperclip Button (PDF) */}
+              {/* Paperclip Button (Documents: PDF, DOCX, TXT, CSV, JSON) */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading || isGenerating}
                 className="p-2 sm:p-2.5 rounded-full text-[#c4c7c5] hover:text-white hover:bg-[#333538] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Attach PDF (Max 10 MB)"
-                aria-label="Attach PDF"
+                title="Attach Document (PDF, DOCX, TXT, CSV, JSON - Max 10 MB)"
+                aria-label="Attach Document"
               >
                 <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>
@@ -530,7 +547,7 @@ export default function ChatInput({
               </button>
             </div>
 
-            {/* Textarea */}
+            {/* Textarea - font-size: 16px minimum to prevent iOS auto-zoom */}
             <textarea
               ref={textareaRef}
               rows={1}
@@ -546,12 +563,12 @@ export default function ChatInput({
                   : activeImage
                   ? 'Ask something about this image...'
                   : activeFile
-                  ? 'Ask something about this PDF...'
+                  ? 'Ask something about this document...'
                   : isWebSearch
                   ? 'Search the web or ask Bujju AI...'
                   : 'Ask Bujju AI...'
               }
-              className="flex-1 bg-transparent px-2.5 py-2 sm:py-2.5 text-[15px] sm:text-base text-[#e3e3e3] placeholder-[#8e918f] outline-none resize-none max-h-40 leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 bg-transparent px-2.5 py-2 sm:py-2.5 text-base text-[#e3e3e3] placeholder-[#8e918f] outline-none resize-none max-h-40 leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed"
             />
 
             {/* Send & Settings Controls */}

@@ -11,7 +11,10 @@
     "start": "node server/index.js",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node scripts/test-pwa.js && node scripts/test-phase2.js",
+    "test:pwa": "node scripts/test-pwa.js",
+    "test:phase2": "node scripts/test-phase2.js"
   },
   "dependencies": {
     "@google/genai": "^2.26.0",
@@ -22,6 +25,7 @@
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
     "lucide-react": "^1.49.0",
+    "mammoth": "^1.13.0",
     "multer": "^2.4.0",
     "pdf-parse": "^2.4.5",
     "react": "^19.2.8",

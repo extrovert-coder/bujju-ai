@@ -1,11 +1,16 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { usePwaInstall } from './utils/pwa'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import AuthPage from './components/AuthPage'
 import LandingPage from './components/LandingPage'
 import MemoryModal from './components/MemoryModal'
+import RemindersModal from './components/RemindersModal'
 import SplashScreen from './components/SplashScreen'
+import CodingWorkspace from './components/CodingWorkspace'
+import PwaInstallModal from './components/PwaInstallModal'
 import { BujjuIcon } from './components/BujjuLogo'
+import { Bell, Check, X } from 'lucide-react'
 import { supabase } from './lib/supabaseClient'
 import { speakText, stopSpeaking } from './utils/speech'
 import { apiUrl } from './lib/api'
@@ -63,6 +68,7 @@ export default function App() {
     }
   })
 
+  const [currentView, setCurrentView] = useState('chat') // 'chat' | 'code'
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [conversations, setConversations] = useState([])
   const [activeChatId, setActiveChatId] = useState(null)
@@ -95,6 +101,33 @@ export default function App() {
   const [isMemoryOpen, setIsMemoryOpen] = useState(false)
   const [memories, setMemories] = useState([])
   const [isMemoryLoading, setIsMemoryLoading] = useState(false)
+
+  // Reminders states (Phase 2)
+  const [isRemindersOpen, setIsRemindersOpen] = useState(false)
+  const [reminders, setReminders] = useState([])
+  const [isRemindersLoading, setIsRemindersLoading] = useState(false)
+  const [notificationPermission, setNotificationPermission] = useState(() =>
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default',
+  )
+  const [dueAlert, setDueAlert] = useState(null)
+  const notifiedReminderIdsRef = useRef(new Set())
+
+  // PWA install hook
+  const { isInstallable, installApp, isIos, isInstalled, installInfo } = usePwaInstall()
+  const [isInstallGuideOpen, setIsInstallGuideOpen] = useState(false)
+
+  // Global Escape key: close open modals/drawer
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key !== 'Escape') return
+      if (isInstallGuideOpen) { setIsInstallGuideOpen(false); return }
+      if (isMemoryOpen) { setIsMemoryOpen(false); return }
+      if (isRemindersOpen) { setIsRemindersOpen(false); return }
+      if (isSidebarOpen) { setIsSidebarOpen(false); return }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [isInstallGuideOpen, isMemoryOpen, isRemindersOpen, isSidebarOpen])
 
   // Auth Header helper for API requests
   const getAuthHeaders = useCallback(async () => {
@@ -191,6 +224,9 @@ export default function App() {
           setUploadError(null)
           setUploadSuccess(null)
           setUsage(null)
+          setReminders([])
+          setDueAlert(null)
+          notifiedReminderIdsRef.current.clear()
         }
       })
 
@@ -280,6 +316,7 @@ export default function App() {
     if (!user) return
 
     handleStopSpeaking()
+    setCurrentView('chat')
     setActiveFile(null)
     setActiveImage((prev) => {
       if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl)
@@ -381,6 +418,7 @@ export default function App() {
   // Switch to another conversation
   const handleSelectChat = async (id) => {
     handleStopSpeaking()
+    setCurrentView('chat')
     if (id === activeChatId) {
       setIsSidebarOpen(false)
       return
@@ -508,6 +546,162 @@ export default function App() {
       console.warn('[Bujju AI Memory] Failed to clear memories on server:', err)
     }
   }
+
+  // Fetch user reminders (Phase 2)
+  const fetchReminders = useCallback(async () => {
+    if (!user?.id) return
+    setIsRemindersLoading(true)
+    try {
+      const headers = await getAuthHeaders()
+      const res = await fetch(apiUrl('/api/reminders'), { headers })
+      if (res.ok) {
+        const data = await res.json()
+        setReminders(Array.isArray(data.reminders) ? data.reminders : [])
+      }
+    } catch (err) {
+      console.warn('[Bujju AI Reminders] Failed to fetch reminders:', err)
+    } finally {
+      setIsRemindersLoading(false)
+    }
+  }, [user?.id, getAuthHeaders])
+
+  // Initial fetch of reminders when user logs in
+  useEffect(() => {
+    if (!user?.id) return
+    let isSubscribed = true
+
+    async function loadInitialReminders() {
+      try {
+        const headers = await getAuthHeaders()
+        const res = await fetch(apiUrl('/api/reminders'), { headers })
+        if (res.ok && isSubscribed) {
+          const data = await res.json()
+          setReminders(Array.isArray(data.reminders) ? data.reminders : [])
+        }
+      } catch (err) {
+        console.warn('[Bujju AI Reminders] Failed to fetch reminders:', err)
+      }
+    }
+
+    loadInitialReminders()
+
+    return () => {
+      isSubscribed = false
+    }
+  }, [user?.id, getAuthHeaders])
+
+  // Create a new reminder
+  const handleCreateReminder = async ({ title, notes, due_at }) => {
+    const headers = await getAuthHeaders()
+    const res = await fetch(apiUrl('/api/reminders'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ title, notes, due_at }),
+    })
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.error || 'Failed to create reminder.')
+    }
+    const data = await res.json()
+    if (data.reminder) {
+      setReminders((prev) => [data.reminder, ...prev])
+    }
+    return data.reminder
+  }
+
+  // Update a reminder (edit or toggle completion)
+  const handleUpdateReminder = async (id, updates) => {
+    const headers = await getAuthHeaders()
+    const res = await fetch(apiUrl(`/api/reminders/${id}`), {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(updates),
+    })
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.error || 'Failed to update reminder.')
+    }
+    const data = await res.json()
+    if (data.reminder) {
+      setReminders((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, ...data.reminder } : r)),
+      )
+      if (updates.completed && dueAlert?.id === id) {
+        setDueAlert(null)
+      }
+    }
+    return data.reminder
+  }
+
+  // Delete a reminder
+  const handleDeleteReminder = async (id) => {
+    setReminders((prev) => prev.filter((r) => r.id !== id))
+    if (dueAlert?.id === id) {
+      setDueAlert(null)
+    }
+    try {
+      const headers = await getAuthHeaders()
+      await fetch(apiUrl(`/api/reminders/${id}`), {
+        method: 'DELETE',
+        headers,
+      })
+    } catch (err) {
+      console.warn('[Bujju AI Reminders] Failed to delete reminder:', err)
+    }
+  }
+
+  // Request browser notification permission
+  const handleRequestNotificationPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const permission = await Notification.requestPermission()
+        setNotificationPermission(permission)
+      } catch (err) {
+        console.warn('Failed to request notification permission:', err)
+      }
+    }
+  }
+
+  // Background poller & timer for due reminders
+  useEffect(() => {
+    if (!user?.id || reminders.length === 0) return
+
+    const checkDueReminders = () => {
+      const now = Date.now()
+      const dueItems = reminders.filter(
+        (r) => !r.completed && new Date(r.due_at).getTime() <= now,
+      )
+
+      for (const item of dueItems) {
+        if (!notifiedReminderIdsRef.current.has(item.id)) {
+          notifiedReminderIdsRef.current.add(item.id)
+
+          // 1. Browser desktop notification if granted
+          if (
+            typeof window !== 'undefined' &&
+            'Notification' in window &&
+            Notification.permission === 'granted'
+          ) {
+            try {
+              new Notification(`⏰ Reminder: ${item.title}`, {
+                body: item.notes || `Scheduled for ${new Date(item.due_at).toLocaleTimeString()}`,
+                icon: '/favicon.ico',
+              })
+            } catch (notifErr) {
+              console.warn('[Reminders] Browser notification error:', notifErr)
+            }
+          }
+
+          // 2. In-app due reminder banner
+          setDueAlert(item)
+        }
+      }
+    }
+
+    checkDueReminders()
+    const timer = setInterval(checkDueReminders, 15000)
+    return () => clearInterval(timer)
+  }, [user?.id, reminders])
 
   // File upload handler
   const handleFileUpload = async (file, directError) => {
@@ -1140,6 +1334,9 @@ export default function App() {
     setActiveFile(null)
     setUploadError(null)
     setUploadSuccess(null)
+    setReminders([])
+    setDueAlert(null)
+    notifiedReminderIdsRef.current.clear()
     localStorage.removeItem('bujju_user')
   }
 
@@ -1183,7 +1380,7 @@ export default function App() {
 
   // 4. Logged-in user view: Bujju AI Chat
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-neutral-950 font-sans antialiased text-neutral-100">
+    <div className="flex h-[100dvh] w-full max-w-full overflow-hidden bg-neutral-950 font-sans antialiased text-neutral-100">
       {/* Left Sidebar - Conversation list loads independently in background */}
       <Sidebar
         isOpen={isSidebarOpen}
@@ -1200,56 +1397,83 @@ export default function App() {
           fetchMemories()
         }}
         memoriesCount={memories.length}
+        onOpenReminders={() => {
+          setIsRemindersOpen(true)
+          fetchReminders()
+        }}
+        pendingRemindersCount={reminders.filter((r) => !r.completed).length}
         isLoadingConversations={isLoadingConversations}
+        currentView={currentView}
+        onSelectView={setCurrentView}
+        isInstallable={isInstallable}
+        onInstallApp={installApp}
+        isIosPwa={isIos}
+        isInstalled={isInstalled}
+        onOpenInstallGuide={() => setIsInstallGuideOpen(true)}
       />
 
-      {/* Main Chat Area - Never shows blocking conversation loader on empty new chat */}
-      <ChatArea
-        onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
-        messages={messages}
-        input={input}
-        setInput={setInput}
-        onSend={handleSend}
-        onNewChat={handleNewChat}
-        onClearChat={handleClearChat}
-        onRegenerate={handleRegenerate}
-        onSelectSuggestion={handleSelectSuggestion}
-        isLoading={isSendingMessage}
-        isSendingMessage={isSendingMessage}
-        isLoadingMessages={isLoadingMessages}
-        isChatLoading={isLoadingMessages}
-        activeChatId={activeChatId}
-        activeFile={activeFile}
-        onUploadFile={handleFileUpload}
-        onRemoveFile={handleRemoveFile}
-        activeImage={activeImage}
-        onUploadImage={handleImageUpload}
-        onRemoveImage={handleRemoveImage}
-        isUploading={isUploading}
-        uploadProgressText={uploadProgressText}
-        uploadError={uploadError}
-        onDismissError={() => setUploadError(null)}
-        uploadSuccess={uploadSuccess}
-        onDismissSuccess={() => setUploadSuccess(null)}
-        speakingMessageId={speakingMessageId}
-        onToggleSpeak={handleToggleSpeak}
-        onStopSpeaking={handleStopSpeaking}
-        voiceRate={voiceRate}
-        setVoiceRate={setVoiceRate}
-        voiceLang={voiceLang}
-        setVoiceLang={setVoiceLang}
-        isWebSearch={isWebSearch}
-        setIsWebSearch={setIsWebSearch}
-        user={user}
-        onOpenMemory={() => {
-          setIsMemoryOpen(true)
-          fetchMemories()
-        }}
-        memoriesCount={memories.length}
-        usage={usage}
-        isUsageLoading={isUsageLoading}
-        usageError={usageError}
-      />
+      {/* Main View: Chat Area OR Coding Workspace */}
+      {currentView === 'chat' ? (
+        <ChatArea
+          onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+          messages={messages}
+          input={input}
+          setInput={setInput}
+          onSend={handleSend}
+          onNewChat={handleNewChat}
+          onClearChat={handleClearChat}
+          onRegenerate={handleRegenerate}
+          onSelectSuggestion={handleSelectSuggestion}
+          isLoading={isSendingMessage}
+          isSendingMessage={isSendingMessage}
+          isLoadingMessages={isLoadingMessages}
+          isChatLoading={isLoadingMessages}
+          activeChatId={activeChatId}
+          activeFile={activeFile}
+          onUploadFile={handleFileUpload}
+          onRemoveFile={handleRemoveFile}
+          activeImage={activeImage}
+          onUploadImage={handleImageUpload}
+          onRemoveImage={handleRemoveImage}
+          isUploading={isUploading}
+          uploadProgressText={uploadProgressText}
+          uploadError={uploadError}
+          onDismissError={() => setUploadError(null)}
+          uploadSuccess={uploadSuccess}
+          onDismissSuccess={() => setUploadSuccess(null)}
+          speakingMessageId={speakingMessageId}
+          onToggleSpeak={handleToggleSpeak}
+          onStopSpeaking={handleStopSpeaking}
+          voiceRate={voiceRate}
+          setVoiceRate={setVoiceRate}
+          voiceLang={voiceLang}
+          setVoiceLang={setVoiceLang}
+          isWebSearch={isWebSearch}
+          setIsWebSearch={setIsWebSearch}
+          user={user}
+          onOpenMemory={() => {
+            setIsMemoryOpen(true)
+            fetchMemories()
+          }}
+          memoriesCount={memories.length}
+          onOpenReminders={() => {
+            setIsRemindersOpen(true)
+            fetchReminders()
+          }}
+          pendingRemindersCount={reminders.filter((r) => !r.completed).length}
+          usage={usage}
+          isUsageLoading={isUsageLoading}
+          usageError={usageError}
+          onSelectView={setCurrentView}
+        />
+      ) : (
+        <CodingWorkspace
+          onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+          onBackToChat={() => setCurrentView('chat')}
+          user={user}
+          getAuthHeaders={getAuthHeaders}
+        />
+      )}
 
       {/* Continuous Self-Training & Memory Modal */}
       <MemoryModal
@@ -1261,6 +1485,86 @@ export default function App() {
         onClearMemories={handleClearMemories}
         isLoading={isMemoryLoading}
       />
+
+      {/* Reminders & Alerts Modal (Phase 2) */}
+      <RemindersModal
+        isOpen={isRemindersOpen}
+        onClose={() => setIsRemindersOpen(false)}
+        reminders={reminders}
+        onCreateReminder={handleCreateReminder}
+        onUpdateReminder={handleUpdateReminder}
+        onDeleteReminder={handleDeleteReminder}
+        isLoading={isRemindersLoading}
+        notificationPermission={notificationPermission}
+        onRequestNotificationPermission={handleRequestNotificationPermission}
+      />
+
+      {/* PWA Installation Guide Modal */}
+      <PwaInstallModal
+        isOpen={isInstallGuideOpen}
+        onClose={() => setIsInstallGuideOpen(false)}
+        isInstallable={isInstallable}
+        onInstallApp={installApp}
+        isInstalled={isInstalled}
+        installInfo={installInfo}
+      />
+
+      {/* In-App Due Reminder Floating Alert Banner */}
+      {dueAlert && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm w-full p-4 rounded-2xl bg-[#1e1f20] border border-amber-500/50 text-white shadow-2xl animate-fade-in backdrop-blur-md">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="h-9 w-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
+                <Bell className="h-4 w-4 animate-bounce" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                  Reminder Due
+                </p>
+                <p className="text-xs font-semibold text-white truncate mt-0.5">
+                  {dueAlert.title}
+                </p>
+                {dueAlert.notes && (
+                  <p className="text-[11px] text-neutral-300 line-clamp-2 mt-1">
+                    {dueAlert.notes}
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDueAlert(null)}
+              className="text-neutral-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              title="Dismiss alert"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-white/5">
+            <button
+              type="button"
+              onClick={() => {
+                handleUpdateReminder(dueAlert.id, { completed: true })
+                setDueAlert(null)
+              }}
+              className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 transition-colors cursor-pointer"
+            >
+              <Check className="h-3 w-3" />
+              <span>Mark Complete</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsRemindersOpen(true)
+                setDueAlert(null)
+              }}
+              className="px-3 py-1 rounded-lg text-xs font-medium bg-[#282a2c] text-white hover:bg-[#333538] transition-colors cursor-pointer"
+            >
+              View Reminders
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
 import multer from 'multer'
 import { PDFParse } from 'pdf-parse'
+import mammoth from 'mammoth'
 import {
   getUserMemories,
   saveUserMemory,
@@ -237,6 +238,7 @@ const localStore = {
   conversations: [],
   messages: [],
   files: [],
+  reminders: [],
   usage: {}, // { [userId]: { date: 'YYYY-MM-DD', count: N } }
 }
 
@@ -477,7 +479,7 @@ app.get('/api/usage', async (req, res) => {
 // FILE UPLOAD & MANAGEMENT ENDPOINTS
 // ----------------------------------------------------
 
-// 1. POST /api/files/upload - Secure file upload (PDF and TXT up to 10 MB)
+// 1. POST /api/files/upload - Secure file upload (PDF, DOCX, TXT, CSV, JSON up to 10 MB)
 app.post('/api/files/upload', (req, res) => {
   upload.single('file')(req, res, async (err) => {
     if (err) {
@@ -503,17 +505,18 @@ app.post('/api/files/upload', (req, res) => {
       // 2. Validate file existence
       if (!req.file) {
         return res.status(400).json({
-          error: 'No PDF selected. Please choose a PDF file to upload.',
+          error: 'No file selected. Please choose a file to upload.',
         })
       }
 
-      const originalname = req.file.originalname || 'document.pdf'
+      const originalname = req.file.originalname || 'document'
       const ext = path.extname(originalname).toLowerCase()
 
-      // 3. Validate file type (PDF only)
-      if (ext !== '.pdf') {
+      // 3. Validate supported file types (PDF, DOCX, TXT, CSV, JSON)
+      const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.txt', '.csv', '.json']
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
         return res.status(400).json({
-          error: 'Invalid file type. Only PDF files are supported.',
+          error: `Invalid file type "${ext || 'unknown'}". Supported formats are PDF, DOCX, TXT, CSV, and JSON.`,
         })
       }
 
@@ -530,25 +533,102 @@ app.post('/api/files/upload', (req, res) => {
         })
       }
 
-      // 5. Process PDF file: PDF text extraction
+      // 5. Safe file extraction per file type
       let extractedText = ''
-      try {
-        const parser = new PDFParse({ data: req.file.buffer })
-        const result = await parser.getText()
-        const rawText = result?.text || ''
-        // Strip out page headers/footers like "-- 1 of 5 --" to check for actual textual content
-        const cleanText = rawText.replace(/-- \d+ of \d+ --/g, '').trim()
-        if (!cleanText) {
+
+      if (ext === '.pdf') {
+        try {
+          const parser = new PDFParse({ data: req.file.buffer })
+          const result = await parser.getText()
+          const rawText = result?.text || ''
+          const cleanText = rawText.replace(/-- \d+ of \d+ --/g, '').trim()
+          if (!cleanText) {
+            return res.status(400).json({
+              error: 'PDF extraction error: This PDF appears to be a scanned or image-only document without extractable text.',
+            })
+          }
+          extractedText = rawText.trim()
+        } catch (pdfErr) {
+          console.error('[Bujju AI Backend] PDF parsing error:', pdfErr.message)
           return res.status(400).json({
-            error: 'PDF extraction error: This PDF appears to be a scanned or image-only document without extractable text.',
+            error: 'PDF extraction error: Failed to extract text from the PDF file. Please ensure the PDF is valid.',
           })
         }
-        extractedText = rawText.trim()
-      } catch (pdfErr) {
-        console.error('[Bujju AI Backend] PDF parsing error:', pdfErr)
-        return res.status(400).json({
-          error: 'PDF extraction error: Failed to extract text from the PDF file. Please ensure the PDF is valid.',
-        })
+      } else if (ext === '.docx') {
+        try {
+          const mammothResult = await mammoth.extractRawText({ buffer: req.file.buffer })
+          const docText = (mammothResult?.value || '').trim()
+          if (!docText) {
+            return res.status(400).json({
+              error: 'Word document error: The uploaded DOCX document contains no readable text.',
+            })
+          }
+          extractedText = docText
+        } catch (docxErr) {
+          console.error('[Bujju AI Backend] DOCX parsing error:', docxErr.message)
+          return res.status(400).json({
+            error: 'Word document error: Failed to parse DOCX. The file may be corrupted, password-protected, or in an invalid format.',
+          })
+        }
+      } else if (ext === '.txt') {
+        const textContent = req.file.buffer.toString('utf-8')
+        if (textContent.includes('\0')) {
+          return res.status(400).json({
+            error: 'Text file error: Binary content detected. Please ensure this is a valid UTF-8 plain text file.',
+          })
+        }
+        if (!textContent.trim()) {
+          return res.status(400).json({
+            error: 'Text file error: The uploaded text file is empty.',
+          })
+        }
+        extractedText = textContent.trim()
+      } else if (ext === '.json') {
+        const jsonContent = req.file.buffer.toString('utf-8')
+        if (jsonContent.includes('\0')) {
+          return res.status(400).json({
+            error: 'JSON error: Binary content detected. Please ensure this is a valid UTF-8 JSON file.',
+          })
+        }
+        if (!jsonContent.trim()) {
+          return res.status(400).json({
+            error: 'JSON error: The uploaded JSON file is empty.',
+          })
+        }
+        try {
+          const parsed = JSON.parse(jsonContent)
+          extractedText = JSON.stringify(parsed, null, 2)
+        } catch (jsonErr) {
+          return res.status(400).json({
+            error: `JSON parsing error: Malformed JSON syntax (${jsonErr.message}).`,
+          })
+        }
+      } else if (ext === '.csv') {
+        const csvContent = req.file.buffer.toString('utf-8').replace(/^\uFEFF/, '')
+        if (csvContent.includes('\0')) {
+          return res.status(400).json({
+            error: 'CSV error: Binary content detected. Please ensure this is a valid UTF-8 CSV file.',
+          })
+        }
+        if (!csvContent.trim()) {
+          return res.status(400).json({
+            error: 'CSV error: The uploaded CSV file is empty.',
+          })
+        }
+        const lines = csvContent.split(/\r\n|\n|\r/).filter((l) => l.trim().length > 0)
+        if (lines.length === 0) {
+          return res.status(400).json({
+            error: 'CSV error: The uploaded CSV file does not contain any valid rows.',
+          })
+        }
+        extractedText = csvContent.trim()
+      }
+
+      // Safe length upper bound for real-time AI reasoning
+      if (extractedText.length > 100000) {
+        extractedText =
+          extractedText.slice(0, 100000) +
+          '\n\n[Note: Document content truncated to the first 100,000 characters for optimal AI reasoning.]'
       }
 
       // 6. Store file record
@@ -570,7 +650,12 @@ app.post('/api/files/upload', (req, res) => {
           .insert([fileRecord])
 
         if (dbErr) {
-          console.warn('[Bujju AI Backend] Supabase files insert notice:', dbErr.message)
+          if (dbErr.message?.includes('file_type') || dbErr.message?.includes('column')) {
+            const { file_type: _, ...compatRecord } = fileRecord
+            await scopedClient.from('files').insert([compatRecord])
+          } else {
+            console.warn('[Bujju AI Backend] Supabase files insert notice:', dbErr.message)
+          }
         }
       }
 
@@ -1356,6 +1441,206 @@ app.delete('/api/memories', async (req, res) => {
   }
 })
 
+// ----------------------------------------------------
+// USER REMINDERS ENDPOINTS (PHASE 2)
+// ----------------------------------------------------
+
+// 1. GET /api/reminders - Fetch all reminders for the authenticated user
+app.get('/api/reminders', async (req, res) => {
+  try {
+    const { user, scopedClient } = await getAuthenticatedUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized. Please sign in to view reminders.' })
+    }
+
+    if (scopedClient) {
+      const { data, error } = await scopedClient
+        .from('user_reminders')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('due_at', { ascending: true })
+
+      if (!error && Array.isArray(data)) {
+        return res.status(200).json({ success: true, reminders: data })
+      }
+      if (error) {
+        console.warn('[Bujju AI Backend] Supabase reminders select notice:', error.message)
+      }
+    }
+
+    const localReminders = localStore.reminders
+      .filter((r) => r.user_id === user.id)
+      .sort((a, b) => new Date(a.due_at) - new Date(b.due_at))
+
+    return res.status(200).json({ success: true, reminders: localReminders })
+  } catch (err) {
+    console.error('[Bujju AI Backend] Get reminders error:', err.message)
+    return res.status(500).json({ error: 'Failed to retrieve reminders.' })
+  }
+})
+
+// 2. POST /api/reminders - Create a new reminder
+app.post('/api/reminders', async (req, res) => {
+  try {
+    const { user, scopedClient } = await getAuthenticatedUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized. Please sign in to create reminders.' })
+    }
+
+    const { title, notes, due_at } = req.body || {}
+
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ error: 'A reminder title is required.' })
+    }
+    if (title.trim().length > 200) {
+      return res.status(400).json({ error: 'Reminder title must be under 200 characters.' })
+    }
+
+    if (!due_at) {
+      return res.status(400).json({ error: 'A scheduled due date and time is required.' })
+    }
+
+    const parsedDue = new Date(due_at)
+    if (isNaN(parsedDue.getTime())) {
+      return res.status(400).json({ error: 'Invalid scheduled date/time format.' })
+    }
+
+    const reminderId = randomUUID()
+    const now = new Date().toISOString()
+    const reminderRecord = {
+      id: reminderId,
+      user_id: user.id,
+      title: title.trim(),
+      notes: typeof notes === 'string' ? notes.trim().slice(0, 2000) : '',
+      due_at: parsedDue.toISOString(),
+      completed: false,
+      created_at: now,
+      updated_at: now,
+    }
+
+    if (scopedClient) {
+      const { data, error } = await scopedClient
+        .from('user_reminders')
+        .insert([reminderRecord])
+        .select()
+        .single()
+
+      if (!error && data) {
+        localStore.reminders.unshift(data)
+        return res.status(201).json({ success: true, reminder: data })
+      }
+      if (error) {
+        console.warn('[Bujju AI Backend] Supabase reminder insert notice:', error.message)
+      }
+    }
+
+    localStore.reminders.unshift(reminderRecord)
+    return res.status(201).json({ success: true, reminder: reminderRecord })
+  } catch (err) {
+    console.error('[Bujju AI Backend] Create reminder error:', err.message)
+    return res.status(500).json({ error: 'Failed to create reminder.' })
+  }
+})
+
+// 3. PUT /api/reminders/:id - Update an existing reminder (edit title/time or toggle completion)
+app.put('/api/reminders/:id', async (req, res) => {
+  const { id } = req.params
+  if (!isValidUUID(id)) {
+    return res.status(400).json({ error: 'Invalid reminder ID format.' })
+  }
+
+  try {
+    const { user, scopedClient } = await getAuthenticatedUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized. Please sign in to update reminders.' })
+    }
+
+    const { title, notes, due_at, completed } = req.body || {}
+    const updates = { updated_at: new Date().toISOString() }
+
+    if (title !== undefined) {
+      if (typeof title !== 'string' || !title.trim()) {
+        return res.status(400).json({ error: 'Reminder title cannot be empty.' })
+      }
+      updates.title = title.trim().slice(0, 200)
+    }
+
+    if (notes !== undefined) {
+      updates.notes = typeof notes === 'string' ? notes.trim().slice(0, 2000) : ''
+    }
+
+    if (due_at !== undefined) {
+      const parsedDue = new Date(due_at)
+      if (isNaN(parsedDue.getTime())) {
+        return res.status(400).json({ error: 'Invalid scheduled date/time format.' })
+      }
+      updates.due_at = parsedDue.toISOString()
+    }
+
+    if (completed !== undefined) {
+      updates.completed = Boolean(completed)
+    }
+
+    if (scopedClient) {
+      const { data, error } = await scopedClient
+        .from('user_reminders')
+        .update(updates)
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single()
+
+      if (!error && data) {
+        const localIdx = localStore.reminders.findIndex((r) => r.id === id && r.user_id === user.id)
+        if (localIdx !== -1) {
+          localStore.reminders[localIdx] = { ...localStore.reminders[localIdx], ...data }
+        }
+        return res.status(200).json({ success: true, reminder: data })
+      }
+    }
+
+    const localIdx = localStore.reminders.findIndex((r) => r.id === id && r.user_id === user.id)
+    if (localIdx === -1) {
+      return res.status(404).json({ error: 'Reminder not found or access denied.' })
+    }
+
+    localStore.reminders[localIdx] = { ...localStore.reminders[localIdx], ...updates }
+    return res.status(200).json({ success: true, reminder: localStore.reminders[localIdx] })
+  } catch (err) {
+    console.error('[Bujju AI Backend] Update reminder error:', err.message)
+    return res.status(500).json({ error: 'Failed to update reminder.' })
+  }
+})
+
+// 4. DELETE /api/reminders/:id - Delete a reminder
+app.delete('/api/reminders/:id', async (req, res) => {
+  const { id } = req.params
+  if (!isValidUUID(id)) {
+    return res.status(400).json({ error: 'Invalid reminder ID format.' })
+  }
+
+  try {
+    const { user, scopedClient } = await getAuthenticatedUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized. Please sign in to delete reminders.' })
+    }
+
+    if (scopedClient) {
+      await scopedClient
+        .from('user_reminders')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id)
+    }
+
+    localStore.reminders = localStore.reminders.filter((r) => !(r.id === id && r.user_id === user.id))
+    return res.status(200).json({ success: true, message: 'Reminder deleted.' })
+  } catch (err) {
+    console.error('[Bujju AI Backend] Delete reminder error:', err.message)
+    return res.status(500).json({ error: 'Failed to delete reminder.' })
+  }
+})
+
 // 9. POST /api/chat - Main chat handler with user authentication, file context & Gemini
 app.post('/api/chat', async (req, res) => {
   try {
@@ -1408,6 +1693,9 @@ app.post('/api/chat', async (req, res) => {
     }
 
     const isWebSearch = Boolean(req.body?.webSearch)
+    const mode = req.body?.mode || 'chat'
+    const codeLanguage = req.body?.language || ''
+    const codeContext = req.body?.codeContext || ''
     let attachedFile = null
 
     // Check if user passed fileId or if existing conversation already has a file
@@ -1591,46 +1879,61 @@ app.post('/api/chat', async (req, res) => {
     let promptContents = message
 
     if (attachedFile) {
-      if (attachedFile.extracted_text && attachedFile.extracted_text.length > 50000) {
-        const replyMsg = 'This PDF is too large to process in one request.'
-        if (wantsStream) {
-          res.setHeader('Content-Type', 'text/event-stream')
-          res.setHeader('Cache-Control', 'no-cache')
-          res.setHeader('Connection', 'keep-alive')
-          res.write(`data: ${JSON.stringify({
-            type: 'done',
-            reply: replyMsg,
-            conversation_id: conversationId,
-            title: currentTitle,
-            file_id: attachedFile.id,
-            file_name: attachedFile.filename,
-          })}\n\n`)
-          return res.end()
-        }
-        return res.status(200).json({
-          reply: replyMsg,
-          conversation_id: conversationId,
-          title: currentTitle,
-          file_id: attachedFile.id,
-          file_name: attachedFile.filename,
-        })
+      let docTypeLabel = 'Document'
+      const ext = (attachedFile.file_type || path.extname(attachedFile.filename || '')).toLowerCase()
+      if (ext === '.pdf') {
+        docTypeLabel = 'PDF document'
+      } else if (ext === '.docx') {
+        docTypeLabel = 'Word DOCX document'
+      } else if (ext === '.csv') {
+        docTypeLabel = 'CSV spreadsheet data'
+      } else if (ext === '.json') {
+        docTypeLabel = 'JSON structured data'
+      } else if (ext === '.txt') {
+        docTypeLabel = 'Plain text file'
       }
 
-      systemInstruction = `You are Bujju AI, a helpful, intelligent AI assistant.
-The user has uploaded a PDF document named "${attachedFile.filename}".
+      let contentToInject = attachedFile.extracted_text || ''
+      if (contentToInject.length > 100000) {
+        contentToInject = contentToInject.slice(0, 100000) + '\n\n[Note: Document content truncated to first 100,000 characters for optimal reasoning.]'
+      }
 
-PDF DOCUMENT CONTENT:
+      systemInstruction = `You are Bujju AI, a helpful, highly intelligent AI assistant.
+The user has attached a ${docTypeLabel} named "${attachedFile.filename}".
+
+ATTACHED DOCUMENT CONTENT:
 """
-${attachedFile.extracted_text}
+${contentToInject}
 """
 
 INSTRUCTIONS:
-1. Answer the user's question accurately using ONLY the information provided in the PDF document above.
-2. If the user asks to summarize the PDF or what the document is about, provide a clear, helpful summary based on the PDF.
-3. If the answer is not found in the PDF, respond strictly with:
-"I couldn't find that information in the uploaded PDF."
-4. Do NOT invent or assume information that is not in the PDF.`
+1. Answer the user's questions, summarize, calculate, inspect, or analyze accurately using the information in the attached ${docTypeLabel} above.
+2. If the user asks for summaries, insights, specific entries, rows, keys, or patterns, provide clear, structured, and insightful answers.
+3. If the requested information is genuinely not present in the attached file, state clearly:
+"I couldn't find that specific information in the attached ${docTypeLabel}."
+4. Do NOT fabricate facts that are not supported by the document.`
       promptContents = `User question: ${message}`
+    } else if (mode === 'code') {
+      systemInstruction = `You are Bujju AI Coding Assistant, a world-class principal software engineer and expert programming copilot.
+Your objective is to provide clean, robust, efficient, secure, and production-grade code.
+Active Language: ${codeLanguage || 'General'}.
+
+Coding Guidelines:
+1. When generating code, always wrap it in fenced markdown code blocks with the accurate language tag (e.g. \`\`\`${codeLanguage || 'javascript'}, \`\`\`python, \`\`\`html, \`\`\`css, \`\`\`java, \`\`\`cpp).
+2. If the user asks for web applications (HTML/CSS/JS), produce self-contained, working HTML with inline styles and scripts that can render directly inside an iframe live preview.
+3. Write clean, idiomatic code with helpful inline comments explaining core logic.
+4. If asked to explain, debug, or refactor code, explain the findings concisely and follow with the complete corrected or improved code.
+5. Strictly adhere to security best practices (no dangerous patterns, sanitize inputs).`
+
+      if (codeContext && typeof codeContext === 'string' && codeContext.trim()) {
+        promptContents = `Current Editor Code (${codeLanguage || 'code'}):
+\`\`\`${codeLanguage || ''}
+${codeContext.slice(0, 20000)}
+\`\`\`
+
+User Request:
+${message}`
+      }
     } else if (isWebSearch) {
       systemInstruction = `${GEMINI_SYSTEM_INSTRUCTION}
 Web Search is active. Provide current, accurate, and comprehensive information. When presenting facts, cite sources or references clearly.`
