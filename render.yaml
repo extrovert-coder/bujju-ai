@@ -21,3 +21,7 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.8-flash
+      - key: DAILY_MESSAGE_LIMIT
+        value: "20"
